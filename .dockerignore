@@ -1,0 +1,16 @@
+.git
+.github
+.claude
+node_modules
+dist
+src/frontend/dist
+data
+admiral
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.local
+.env.*.local
+pr_body.md
+docs
