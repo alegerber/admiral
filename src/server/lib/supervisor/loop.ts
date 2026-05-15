@@ -1,4 +1,4 @@
-import type { Model, Context, AssistantMessage } from '@mariozechner/pi-ai'
+import type { Model, Context, AssistantMessage, ToolCall } from '@mariozechner/pi-ai'
 import { getProfile, getLogEntries } from '../db'
 import { loadConfig } from './config'
 import { getNotes } from './notes'
@@ -36,7 +36,7 @@ export async function runSupervisorTurn(
     insertAudit('error', profileId, 'Supervisor run skipped: profile not found')
     return
   }
-  const profileName = String((profile as { name?: unknown }).name ?? profileId)
+  const profileName = profile.name
 
   const notes = getNotes(profileId)
   const logs = getLogEntries(profileId, undefined, 30)
@@ -53,6 +53,8 @@ export async function runSupervisorTurn(
     messages: [{ role: 'user', content: userContent, timestamp: Date.now() }],
   }
 
+  // We audit the attempt BEFORE calling complete() so failed attempts are still counted.
+  // This means a failed LLM call produces two audit rows: one 'llm_call' (attempt) and one 'error' (outcome).
   insertAudit('llm_call', profileId, `Supervisor invoked for ${profileName}`, { signals })
 
   let response: AssistantMessage
@@ -70,11 +72,9 @@ export async function runSupervisorTurn(
     return
   }
 
-  const toolCalls = (response.content as Array<{ type?: string; id?: string; name?: string; arguments?: Record<string, unknown> }>)
-    .filter(c => c.type === 'toolCall')
+  const toolCalls = response.content.filter((c): c is ToolCall => c.type === 'toolCall')
 
   for (const call of toolCalls) {
-    if (!call.name) continue
     try {
       await executeSupervisorTool(
         { name: call.name, arguments: call.arguments ?? {} },
