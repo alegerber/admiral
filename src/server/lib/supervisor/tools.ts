@@ -35,7 +35,7 @@ export const supervisorToolDefinitions: SupervisorToolDefinition[] = [
   },
   {
     name: 'propose_pause',
-    description: 'PROPOSAL. Pause the sub-agent. Only when structurally broken.',
+    description: 'PROPOSAL (needs human approval). Pause the sub-agent. Only when structurally broken.',
     parameters: {
       type: 'object',
       properties: {
@@ -46,7 +46,7 @@ export const supervisorToolDefinitions: SupervisorToolDefinition[] = [
   },
   {
     name: 'propose_resume',
-    description: 'PROPOSAL. Resume a paused sub-agent.',
+    description: 'PROPOSAL (needs human approval). Resume a paused sub-agent.',
     parameters: {
       type: 'object',
       properties: {
@@ -141,17 +141,17 @@ export async function executeSupervisorTool(
     }
 
     case 'update_notes': {
-      upsertNotes(profileId, {
-        observations: String(call.arguments.observations ?? ''),
-        last_strategy: String(call.arguments.last_strategy ?? ''),
-        open_concerns: String(call.arguments.open_concerns ?? ''),
-      })
+      const observations = String(call.arguments.observations ?? '')
+      const last_strategy = String(call.arguments.last_strategy ?? '')
+      const open_concerns = String(call.arguments.open_concerns ?? '')
+      upsertNotes(profileId, { observations, last_strategy, open_concerns })
+      insertAudit('notes_updated', profileId, 'Notes updated', { observations, last_strategy, open_concerns })
       return
     }
 
     case 'do_nothing': {
       const reasoning = String(call.arguments.reasoning ?? '')
-      insertAudit('llm_call', profileId, `do_nothing: ${reasoning.slice(0, 80)}`, { reasoning })
+      insertAudit('do_nothing', profileId, `do_nothing: ${reasoning.slice(0, 80)}`, { reasoning })
       return
     }
 

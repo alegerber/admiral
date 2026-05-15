@@ -10,6 +10,8 @@ export type AuditEventType =
   | 'proposal_rejected'
   | 'proposal_expired'
   | 'supervisor_skip'
+  | 'notes_updated'
+  | 'do_nothing'
   | 'error'
 
 export interface AuditRow {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'bun:test'
-import { getDb, addLogEntry } from '../db'
+import { getDb } from '../db'
 import { executeSupervisorTool, supervisorToolDefinitions } from './tools'
 import { listAudit } from './audit'
 import { listProposals } from './proposals'
@@ -83,10 +83,21 @@ describe('supervisor tools', () => {
     expect(n.open_concerns).toBe('C')
   })
 
+  it('update_notes also writes an audit entry', async () => {
+    await executeSupervisorTool(
+      { name: 'update_notes', arguments: { observations: 'A', last_strategy: 'B', open_concerns: 'C' } },
+      'p1',
+      makeAgentManagerMock() as any,
+    )
+    const audit = listAudit()
+    expect(audit[0].event_type).toBe('notes_updated')
+    expect(audit[0].target_profile_id).toBe('p1')
+  })
+
   it('do_nothing only logs to audit', async () => {
     await executeSupervisorTool({ name: 'do_nothing', arguments: { reasoning: 'all good' } }, 'p1', makeAgentManagerMock() as any)
     const audit = listAudit()
-    expect(audit[0].event_type).toBe('llm_call')  // do_nothing logs via audit
+    expect(audit[0].event_type).toBe('do_nothing')
     // No proposals, no nudges
     expect(listProposals({}).length).toBe(0)
   })
@@ -97,5 +108,12 @@ describe('supervisor tools', () => {
     // It should not throw; instead log to audit as 'error' or 'supervisor_skip'
     const audit = listAudit()
     expect(audit.some(a => a.event_type === 'error' || a.event_type === 'supervisor_skip')).toBe(true)
+  })
+
+  it('logs error for unknown tool name', async () => {
+    await executeSupervisorTool({ name: 'bogus_tool', arguments: {} }, 'p1', makeAgentManagerMock() as any)
+    const audit = listAudit()
+    expect(audit[0].event_type).toBe('error')
+    expect(audit[0].summary).toContain('bogus_tool')
   })
 })
