@@ -15,6 +15,12 @@ function resetDb() {
 describe('audit', () => {
   beforeEach(resetDb)
 
+  it('uses :memory: DB for tests (isolation check)', () => {
+    const list = getDb().query('PRAGMA database_list').all() as Array<{ file: string }>
+    // For :memory:, the file column is empty or ':memory:'
+    expect(list[0].file === '' || list[0].file === ':memory:').toBe(true)
+  })
+
   it('inserts a tick event with no target', () => {
     const id = insertAudit('tick', null, 'Watchdog tick started')
     expect(id).toBeGreaterThan(0)

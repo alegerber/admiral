@@ -124,44 +124,44 @@ git commit -m "feat(supervisor): add supervisor_notes/proposals/audit tables"
 
 ### Task 1.2: Make `getDb` test-injectable
 
-The existing `getDb()` hardcodes `data/admiral.db`. Unit tests need an in-memory DB. Smallest change: respect `ADMIRAL_DB_PATH` env var if set.
+The existing `getDb()` hardcodes `data/admiral.db`. Unit tests need an in-memory DB. `ADMIRAL_DB_PATH` is respected, but the path must be resolved **lazily inside `getDb()`** — not at module scope. A module-level const is captured once at import time, so `process.env.ADMIRAL_DB_PATH = ':memory:'` assignments in test files (which come after the import statement) have no effect.
 
 **Files:**
-- Modify: `src/server/lib/db.ts:6-7`
+- Modify: `src/server/lib/db.ts`
 
-- [ ] **Step 1: Replace `DB_PATH` constant**
+- [ ] **Step 1: Replace `DB_PATH` constant with a `resolveDbPath()` function**
 
-Replace lines 6-7:
-
-```typescript
-const DB_DIR = path.join(process.cwd(), 'data')
-const DB_PATH = path.join(DB_DIR, 'admiral.db')
-```
-
-with:
+Remove the module-level `DB_PATH` const. Add a function that reads the env var on each call:
 
 ```typescript
 const DB_DIR = path.join(process.cwd(), 'data')
-const DB_PATH = process.env.ADMIRAL_DB_PATH || path.join(DB_DIR, 'admiral.db')
-```
 
-- [ ] **Step 2: Skip dir creation when using `:memory:` or test path**
-
-In `getDb()` around line 29 (`fs.mkdirSync(DB_DIR, { recursive: true })`), wrap so it only runs when DB_PATH starts with the DB_DIR prefix:
-
-```typescript
-if (DB_PATH.startsWith(DB_DIR)) {
-  fs.mkdirSync(DB_DIR, { recursive: true })
+function resolveDbPath(): string {
+  return process.env.ADMIRAL_DB_PATH || path.join(DB_DIR, 'admiral.db')
 }
 ```
 
-Also, the `fs.existsSync(DB_PATH)` health check at line 14 must skip for `:memory:` (which has no file). Wrap the conditional:
+Also add a module-level tracker for the last opened path, so we can detect when a test switches to `:memory:`:
 
 ```typescript
-if (db) {
-  // For :memory: DB, just verify the connection is healthy
-  const isFileBased = DB_PATH !== ':memory:'
-  if (isFileBased && !fs.existsSync(DB_PATH)) {
+let db: Database | null = null
+let lastOpenedPath: string | null = null
+```
+
+- [ ] **Step 2: Resolve path lazily inside `getDb()` with cache-path tracking**
+
+At the top of `getDb()`, resolve the path and derive the file-based flag:
+
+```typescript
+const dbPath = resolveDbPath()
+const isFileBased = dbPath !== ':memory:'
+```
+
+Cache-reuse guard — only reuse if the path hasn't changed, and evict if the file has disappeared:
+
+```typescript
+if (db && lastOpenedPath === dbPath) {
+  if (isFileBased && !fs.existsSync(dbPath)) {
     try { db.close() } catch { /* ignore */ }
     db = null
   } else {
@@ -174,19 +174,39 @@ if (db) {
     }
   }
 }
+
+if (db && lastOpenedPath !== dbPath) {
+  // Path changed (e.g. test switching to :memory:) — close and reopen
+  try { db.close() } catch { /* ignore */ }
+  db = null
+}
 ```
 
-- [ ] **Step 3: Verify existing tests still pass**
+Then open (skip `mkdirSync` for `:memory:`), run migrations, and record the opened path:
+
+```typescript
+if (dbPath.startsWith(DB_DIR)) {
+  fs.mkdirSync(DB_DIR, { recursive: true })
+}
+db = new Database(dbPath)
+lastOpenedPath = dbPath
+```
+
+- [ ] **Step 3: Verify tests pass**
 
 Run: `bun test src/server/lib/tools.test.ts`
 
-Expected: PASS (no behavior change for the default file-based path).
+Expected: 11/11 PASS (no behavior change for the default file-based path).
+
+Run: `bun test src/server/lib/supervisor/audit.test.ts`
+
+Expected: 5/5 PASS, with the isolation-check test confirming `PRAGMA database_list` returns an empty file path (`:memory:` in use).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add src/server/lib/db.ts
-git commit -m "refactor(db): allow ADMIRAL_DB_PATH env override for tests"
+git commit -m "fix(db): resolve ADMIRAL_DB_PATH lazily for test isolation"
 ```
 
 ---

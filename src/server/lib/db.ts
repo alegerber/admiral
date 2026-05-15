@@ -4,15 +4,20 @@ import fs from 'fs'
 import type { Provider, Profile, LogEntry } from '../../shared/types'
 
 const DB_DIR = path.join(process.cwd(), 'data')
-const DB_PATH = process.env.ADMIRAL_DB_PATH || path.join(DB_DIR, 'admiral.db')
+
+function resolveDbPath(): string {
+  return process.env.ADMIRAL_DB_PATH || path.join(DB_DIR, 'admiral.db')
+}
 
 let db: Database | null = null
+let lastOpenedPath: string | null = null
 
 export function getDb(): Database {
-  if (db) {
-    // For :memory: DB, just verify the connection is healthy
-    const isFileBased = DB_PATH !== ':memory:'
-    if (isFileBased && !fs.existsSync(DB_PATH)) {
+  const dbPath = resolveDbPath()
+  const isFileBased = dbPath !== ':memory:'
+
+  if (db && lastOpenedPath === dbPath) {
+    if (isFileBased && !fs.existsSync(dbPath)) {
       try { db.close() } catch { /* ignore */ }
       db = null
     } else {
@@ -27,10 +32,17 @@ export function getDb(): Database {
     }
   }
 
-  if (DB_PATH.startsWith(DB_DIR)) {
+  if (db && lastOpenedPath !== dbPath) {
+    // Path changed (e.g. test switching to :memory:) — close and reopen
+    try { db.close() } catch { /* ignore */ }
+    db = null
+  }
+
+  if (dbPath.startsWith(DB_DIR)) {
     fs.mkdirSync(DB_DIR, { recursive: true })
   }
-  db = new Database(DB_PATH)
+  db = new Database(dbPath)
+  lastOpenedPath = dbPath
   db.exec('PRAGMA journal_mode = WAL')
   db.exec('PRAGMA foreign_keys = ON')
 
