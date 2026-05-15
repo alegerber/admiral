@@ -9,6 +9,9 @@ import providers from './routes/providers'
 import models from './routes/models'
 import commands from './routes/commands'
 import preferences from './routes/preferences'
+import { SupervisorManager, supervisorManager } from './lib/supervisor/manager'
+import { agentManager } from './lib/agent-manager'
+import { setLogEntryHook } from './lib/db'
 
 const app = new Hono()
 app.use('*', cors())
@@ -20,6 +23,21 @@ app.route('/api/providers', providers)
 app.route('/api/models', models)
 app.route('/api/commands', commands)
 app.route('/api/preferences', preferences)
+
+// Supervisor wiring (additive — no-op if config.enabled is false)
+supervisorManager.instance = new SupervisorManager({
+  agentManager: agentManager as any,
+  getActivitySnapshot: (profileId) => {
+    const agent = agentManager.getAgent(profileId)
+    return {
+      lastActivityChangeMs: agent ? agent.lastActivityChangeMs : Date.now(),
+    }
+  },
+})
+supervisorManager.instance.start()
+setLogEntryHook((profileId, type) => {
+  if (type === 'llm_call') supervisorManager.instance?.onLlmCall(profileId)
+})
 
 // Health check
 app.get('/api/health', (c) => c.json({ ok: true }))
