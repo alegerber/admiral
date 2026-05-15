@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Settings, Sun, Moon, Github, AlertTriangle, CircleHelp } from 'lucide-react'
-import { useSearchParams } from 'react-router'
+import { useSearchParams, Link } from 'react-router'
 import type { Profile, Provider } from '@/types'
 import { ProfileList } from './ProfileList'
 import { ProfileView } from './ProfileView'
@@ -147,6 +147,12 @@ export function Dashboard({ profiles: initialProfiles, providers, registrationCo
           >
             <CircleHelp size={13} />
           </button>
+          <Link
+            to="/supervisor"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider px-2.5 py-1.5 hover:text-foreground transition-colors"
+          >
+            Supervisor
+          </Link>
           <button
             onClick={onShowProviders}
             className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider px-2.5 py-1.5 hover:text-foreground transition-colors"
