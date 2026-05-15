@@ -23,7 +23,7 @@ export function SupervisorBadge({ profileId }: { profileId: string }) {
   if (pendingCount === 0) return null
 
   return (
-    <Link to="/supervisor">
+    <Link to="?supervisor=open">
       <Badge variant="destructive" className="cursor-pointer">
         ⚠ {pendingCount} supervisor proposal{pendingCount > 1 ? 's' : ''}
       </Badge>

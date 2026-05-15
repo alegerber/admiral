@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader } from './ui/card'
 import { Button } from './ui/button'
-import { Badge } from './ui/badge'
+import { Overlay } from './ui/overlay'
 
 interface Config {
   enabled: boolean
@@ -35,7 +34,11 @@ interface AuditEntry {
   summary: string
 }
 
-export function SupervisorPanel() {
+interface SupervisorPanelProps {
+  onClose: () => void
+}
+
+export function SupervisorPanel({ onClose }: SupervisorPanelProps) {
   const [config, setConfig] = useState<Config | null>(null)
   const [status, setStatus] = useState<Status | null>(null)
   const [proposals, setProposals] = useState<Proposal[]>([])
@@ -77,58 +80,104 @@ export function SupervisorPanel() {
     refresh()
   }
 
-  if (!config || !status) return <div className="p-4">Loading supervisor…</div>
+  if (!config || !status) {
+    return (
+      <Overlay title="Supervisor" onClose={onClose}>
+        <div className="text-xs text-muted-foreground">Loading supervisor…</div>
+      </Overlay>
+    )
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">Supervisor</h2>
-          <div className="flex items-center gap-2">
-            <Badge variant={config.enabled ? 'default' : 'secondary'}>
-              {config.enabled ? 'Enabled' : 'Disabled'}
-            </Badge>
-            <Button size="sm" onClick={toggleEnabled}>
+    <Overlay title="Supervisor" onClose={onClose}>
+      {/* Status section */}
+      <div>
+        <span className="text-[11px] text-[hsl(var(--smui-orange))] uppercase tracking-[1.5px] font-medium">Status</span>
+        <div className="space-y-2.5 mt-2.5">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground w-28 shrink-0">State</span>
+            <div className="flex items-center gap-2.5 flex-1">
+              <div className={`status-dot ${config.enabled ? 'status-dot-green' : 'status-dot-grey'}`} />
+              <span className="text-xs text-foreground">{config.enabled ? 'Enabled' : 'Disabled'}</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleEnabled}
+              className="h-6 text-[10px] hover:text-primary hover:border-primary/40"
+            >
               {config.enabled ? 'Disable' : 'Enable'}
             </Button>
           </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground w-28 shrink-0">Model</span>
+            <span className="text-xs text-foreground">{config.model || '(none)'}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground w-28 shrink-0">Last tick</span>
+            <span className="text-xs text-foreground">{status.lastTick ?? 'never'}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground w-28 shrink-0">Pending</span>
+            <span className="text-xs text-foreground tabular-nums">{status.pendingProposalCount}</span>
+          </div>
         </div>
-        <div className="text-xs text-muted-foreground mt-2">
-          Model: {config.model || '(none)'} · Last tick: {status.lastTick ?? 'never'} · Pending: {status.pendingProposalCount}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+      </div>
 
-        <section>
-          <h3 className="text-sm font-medium mb-2">Pending Proposals</h3>
+      {/* Pending Proposals section */}
+      <div>
+        <span className="text-[11px] text-[hsl(var(--smui-frost-2))] uppercase tracking-[1.5px] font-medium">Pending Proposals</span>
+        <div className="space-y-1.5 mt-2.5">
           {proposals.length === 0 ? (
-            <div className="text-xs text-muted-foreground">No pending proposals.</div>
+            <div className="text-[11px] text-muted-foreground">No pending proposals.</div>
           ) : proposals.map(p => (
-            <div key={p.id} className="border rounded p-2 mb-2">
-              <div className="text-sm font-medium">#{p.id} {p.action} on {p.profile_id}</div>
-              <div className="text-xs text-muted-foreground my-1">{p.reasoning}</div>
-              <pre className="text-xs bg-muted p-1 rounded overflow-x-auto">{p.payload}</pre>
+            <div key={p.id} className="border border-border/60 bg-background/30 px-3 py-2">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs font-medium text-foreground">#{p.id} {p.action}</span>
+                <span className="text-[10px] text-muted-foreground">on {p.profile_id}</span>
+              </div>
+              {p.reasoning && (
+                <p className="text-[11px] text-muted-foreground mt-1.5">{p.reasoning}</p>
+              )}
+              <pre className="text-[10px] bg-muted px-2 py-1 mt-1.5 overflow-x-auto font-mono">{p.payload}</pre>
               <div className="flex gap-2 mt-2">
-                <Button size="sm" onClick={() => apply(p.id)}>Apply</Button>
-                <Button size="sm" variant="outline" onClick={() => reject(p.id)}>Reject</Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => apply(p.id)}
+                  className="h-6 text-[10px] hover:text-primary hover:border-primary/40"
+                >
+                  Apply
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => reject(p.id)}
+                  className="h-6 text-[10px] hover:text-[hsl(var(--smui-orange))] hover:border-[hsl(var(--smui-orange))]/40"
+                >
+                  Reject
+                </Button>
               </div>
             </div>
           ))}
-        </section>
+        </div>
+      </div>
 
-        <section>
-          <h3 className="text-sm font-medium mb-2">Recent Activity</h3>
-          <div className="space-y-1 text-xs max-h-60 overflow-y-auto">
-            {audit.map(a => (
-              <div key={a.id} className="flex gap-2">
-                <span className="text-muted-foreground">{a.timestamp}</span>
-                <span className="font-mono">{a.event_type}</span>
-                <span className="truncate">{a.summary}</span>
-              </div>
-            ))}
-          </div>
-        </section>
-      </CardContent>
-    </Card>
+      {/* Recent Activity section */}
+      <div>
+        <span className="text-[11px] text-[hsl(var(--smui-frost-2))] uppercase tracking-[1.5px] font-medium">Recent Activity</span>
+        <div className="space-y-1 mt-2.5">
+          {audit.length === 0 ? (
+            <div className="text-[11px] text-muted-foreground">No activity yet.</div>
+          ) : audit.map(a => (
+            <div key={a.id} className="flex gap-2 text-[11px]">
+              <span className="text-muted-foreground shrink-0 tabular-nums">{a.timestamp}</span>
+              <span className="font-mono text-foreground shrink-0">{a.event_type}</span>
+              <span className="text-muted-foreground truncate">{a.summary}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Overlay>
   )
 }

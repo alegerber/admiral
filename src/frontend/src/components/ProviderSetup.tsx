@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
-import { KeyRound, Wifi, WifiOff, Search, Server, X } from 'lucide-react'
+import { useState } from 'react'
+import { KeyRound, Wifi, WifiOff, Search, Server } from 'lucide-react'
 import type { Provider } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Overlay } from '@/components/ui/overlay'
 
 const LOCALHOST = '127.0.0.1'
 
@@ -60,19 +61,6 @@ export function ProviderSetup({ providers: initialProviders, registrationCode, o
   })
   const [saving, setSaving] = useState<Record<string, boolean>>({})
   const [detecting, setDetecting] = useState(false)
-
-  // Close on Escape
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-      document.body.style.overflow = ''
-    }
-  }, [onClose])
 
   async function saveKey(id: string) {
     setSaving(s => ({ ...s, [id]: true }))
@@ -151,34 +139,9 @@ export function ProviderSetup({ providers: initialProviders, registrationCode, o
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8"
-      onClick={onClose}
-    >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
-      {/* Modal */}
-      <div
-        className="relative bg-card border border-border w-full max-w-[640px] max-h-[85vh] flex flex-col z-10"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between py-2.5 px-4 border-b border-border shrink-0">
-          <h2 className="font-jetbrains text-sm font-medium text-primary tracking-[1.5px] uppercase">Settings</h2>
-          <button
-            onClick={onClose}
-            className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            title="Close (Esc)"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* Content - scrollable */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-5">
-          {/* General section */}
-          <div>
+    <Overlay title="Settings" onClose={onClose}>
+      {/* General section */}
+      <div>
             <span className="text-[11px] text-[hsl(var(--smui-orange))] uppercase tracking-[1.5px] font-medium">General</span>
             <div className="space-y-2.5 mt-2.5">
               <div className="flex items-center gap-3">
@@ -357,8 +320,6 @@ export function ProviderSetup({ providers: initialProviders, registrationCode, o
               })}
             </div>
           </div>
-        </div>
-      </div>
-    </div>
+    </Overlay>
   )
 }

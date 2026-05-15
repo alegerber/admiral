@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router'
 import { Dashboard } from '@/components/Dashboard'
 import { ProviderSetup } from '@/components/ProviderSetup'
+import { SupervisorPanel } from '@/components/SupervisorPanel'
 import type { Profile, Provider } from '@/types'
 
 export function Home() {
@@ -8,6 +10,16 @@ export function Home() {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const showSupervisor = searchParams.get('supervisor') === 'open'
+  const openSupervisor = () => {
+    searchParams.set('supervisor', 'open')
+    setSearchParams(searchParams)
+  }
+  const closeSupervisor = () => {
+    searchParams.delete('supervisor')
+    setSearchParams(searchParams)
+  }
   const [registrationCode, setRegistrationCode] = useState('')
   const [gameserverUrl, setGameserverUrl] = useState('https://game.spacemolt.com')
   const [maxTurns, setMaxTurns] = useState(30)
@@ -124,7 +136,9 @@ export function Home() {
         gameserverUrl={gameserverUrl}
         onRefresh={loadData}
         onShowProviders={() => setShowSettings(true)}
+        onOpenSupervisor={openSupervisor}
       />
+      {showSupervisor && <SupervisorPanel onClose={closeSupervisor} />}
       {showSettings && (
         <ProviderSetup
           providers={providers}

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, UserPlus, KeyRound, ArrowRight, ArrowLeft, AlertTriangle } from 'lucide-react'
+import { UserPlus, KeyRound, ArrowRight, ArrowLeft, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { Overlay } from '@/components/ui/overlay'
 import { ModelPicker } from '@/components/ModelPicker'
 import type { Profile, Provider } from '@/types'
 
@@ -37,19 +38,6 @@ export function NewProfileWizard({ providers, registrationCode, gameserverUrl, o
   const hasValidProvider = validProviders.length > 0
   const availableProviders = ['manual', ...validProviders.map(p => p.id)]
 
-  // Close on Escape
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-      document.body.style.overflow = ''
-    }
-  }, [onClose])
-
   // Auto-focus
   useEffect(() => {
     if (step === 'account' && accountMode === 'existing' && usernameRef.current) {
@@ -81,37 +69,54 @@ export function NewProfileWizard({ providers, registrationCode, gameserverUrl, o
   const canCreate = !!profileName.trim()
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8"
-      onClick={onClose}
-    >
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
-      <div
-        className="relative bg-card border border-border w-full max-w-[520px] flex flex-col z-10"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between py-2.5 px-4 border-b border-border shrink-0">
-          <h2 className="font-jetbrains text-sm font-medium text-primary tracking-[1.5px] uppercase">
-            New Profile
-          </h2>
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-[1.5px]">
-              Step {step === 'account' ? '1' : '2'} of 2
-            </span>
-            <button
-              onClick={onClose}
-              className="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-              title="Close (Esc)"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+    <Overlay
+      title="New Profile"
+      onClose={onClose}
+      maxWidth="max-w-[520px]"
+      headerExtra={
+        <span className="text-[10px] text-muted-foreground uppercase tracking-[1.5px]">
+          Step {step === 'account' ? '1' : '2'} of 2
+        </span>
+      }
+      footer={
+        <div className="flex items-center justify-between px-4 py-2.5">
+          {step === 'account' ? (
+            <>
+              <div />
+              <Button
+                size="sm"
+                onClick={() => setStep('provider')}
+                disabled={!canProceedToProvider}
+                className="gap-1.5 h-7 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Next
+                <ArrowRight size={12} />
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setStep('account')}
+                className="gap-1.5 h-7 text-xs"
+              >
+                <ArrowLeft size={12} />
+                Back
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleCreate}
+                disabled={!canCreate}
+                className="gap-1.5 h-7 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Create Profile
+              </Button>
+            </>
+          )}
         </div>
-
-        {/* Content */}
-        <div className="px-4 py-4 space-y-4">
+      }
+    >
           {step === 'account' && (
             <>
               <div>
@@ -302,46 +307,6 @@ export function NewProfileWizard({ providers, registrationCode, gameserverUrl, o
               </div>
             </>
           )}
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-border">
-          {step === 'account' ? (
-            <>
-              <div />
-              <Button
-                size="sm"
-                onClick={() => setStep('provider')}
-                disabled={!canProceedToProvider}
-                className="gap-1.5 h-7 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                Next
-                <ArrowRight size={12} />
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setStep('account')}
-                className="gap-1.5 h-7 text-xs"
-              >
-                <ArrowLeft size={12} />
-                Back
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleCreate}
-                disabled={!canCreate}
-                className="gap-1.5 h-7 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                Create Profile
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
+    </Overlay>
   )
 }

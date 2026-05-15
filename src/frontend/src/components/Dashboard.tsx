@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Settings, Sun, Moon, Github, AlertTriangle, CircleHelp } from 'lucide-react'
-import { useSearchParams, Link } from 'react-router'
+import { useSearchParams } from 'react-router'
 import type { Profile, Provider } from '@/types'
 import { ProfileList } from './ProfileList'
 import { ProfileView } from './ProfileView'
@@ -14,9 +14,10 @@ interface Props {
   gameserverUrl: string
   onRefresh: () => void
   onShowProviders: () => void
+  onOpenSupervisor: () => void
 }
 
-export function Dashboard({ profiles: initialProfiles, providers, registrationCode, gameserverUrl, onRefresh, onShowProviders }: Props) {
+export function Dashboard({ profiles: initialProfiles, providers, registrationCode, gameserverUrl, onRefresh, onShowProviders, onOpenSupervisor }: Props) {
   const [profiles, setProfiles] = useState(initialProfiles)
   const [searchParams, setSearchParams] = useSearchParams()
   const activeId = searchParams.get('profile') || initialProfiles[0]?.id || ''
@@ -147,12 +148,12 @@ export function Dashboard({ profiles: initialProfiles, providers, registrationCo
           >
             <CircleHelp size={13} />
           </button>
-          <Link
-            to="/supervisor"
+          <button
+            onClick={onOpenSupervisor}
             className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider px-2.5 py-1.5 hover:text-foreground transition-colors"
           >
             Supervisor
-          </Link>
+          </button>
           <button
             onClick={onShowProviders}
             className="flex items-center gap-1.5 text-xs text-muted-foreground uppercase tracking-wider px-2.5 py-1.5 hover:text-foreground transition-colors"
