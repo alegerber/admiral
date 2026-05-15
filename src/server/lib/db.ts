@@ -99,6 +99,9 @@ function migrate(db: Database): void {
       ON supervisor_proposals(status, created_at)
       WHERE status = 'pending';
 
+    CREATE INDEX IF NOT EXISTS idx_proposals_profile
+      ON supervisor_proposals(profile_id, id DESC);
+
     CREATE TABLE IF NOT EXISTS supervisor_audit (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
       timestamp  TEXT NOT NULL DEFAULT (datetime('now')),
@@ -109,7 +112,7 @@ function migrate(db: Database): void {
       FOREIGN KEY (target_profile_id) REFERENCES profiles(id) ON DELETE SET NULL
     );
 
-    CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON supervisor_audit(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_recent ON supervisor_audit(id DESC);
     CREATE INDEX IF NOT EXISTS idx_audit_target ON supervisor_audit(target_profile_id, id DESC);
   `)
 
