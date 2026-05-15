@@ -4,14 +4,20 @@ import fs from 'fs'
 import type { Provider, Profile, LogEntry } from '../../shared/types'
 
 const DB_DIR = path.join(process.cwd(), 'data')
-const DB_PATH = path.join(DB_DIR, 'admiral.db')
+
+function resolveDbPath(): string {
+  return process.env.ADMIRAL_DB_PATH || path.join(DB_DIR, 'admiral.db')
+}
 
 let db: Database | null = null
+let lastOpenedPath: string | null = null
 
 export function getDb(): Database {
-  if (db) {
-    // Verify the DB file still exists and connection is healthy
-    if (!fs.existsSync(DB_PATH)) {
+  const dbPath = resolveDbPath()
+  const isFileBased = dbPath !== ':memory:'
+
+  if (db && lastOpenedPath === dbPath) {
+    if (isFileBased && !fs.existsSync(dbPath)) {
       try { db.close() } catch { /* ignore */ }
       db = null
     } else {
@@ -26,8 +32,17 @@ export function getDb(): Database {
     }
   }
 
-  fs.mkdirSync(DB_DIR, { recursive: true })
-  db = new Database(DB_PATH)
+  if (db && lastOpenedPath !== dbPath) {
+    // Path changed (e.g. test switching to :memory:) — close and reopen
+    try { db.close() } catch { /* ignore */ }
+    db = null
+  }
+
+  if (dbPath.startsWith(DB_DIR)) {
+    fs.mkdirSync(DB_DIR, { recursive: true })
+  }
+  db = new Database(dbPath)
+  lastOpenedPath = dbPath
   db.exec('PRAGMA journal_mode = WAL')
   db.exec('PRAGMA foreign_keys = ON')
 
@@ -73,6 +88,47 @@ function migrate(db: Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_log_profile ON log_entries(profile_id, id);
+
+    CREATE TABLE IF NOT EXISTS supervisor_notes (
+      profile_id    TEXT PRIMARY KEY,
+      observations  TEXT NOT NULL DEFAULT '',
+      last_strategy TEXT NOT NULL DEFAULT '',
+      open_concerns TEXT NOT NULL DEFAULT '',
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS supervisor_proposals (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id  TEXT NOT NULL,
+      action      TEXT NOT NULL,
+      payload     TEXT NOT NULL,
+      reasoning   TEXT NOT NULL,
+      status      TEXT NOT NULL DEFAULT 'pending',
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      resolved_at TEXT,
+      FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_proposals_pending
+      ON supervisor_proposals(status, created_at)
+      WHERE status = 'pending';
+
+    CREATE INDEX IF NOT EXISTS idx_proposals_profile
+      ON supervisor_proposals(profile_id, id DESC);
+
+    CREATE TABLE IF NOT EXISTS supervisor_audit (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp  TEXT NOT NULL DEFAULT (datetime('now')),
+      event_type TEXT NOT NULL,
+      target_profile_id TEXT,
+      summary    TEXT NOT NULL,
+      detail     TEXT,
+      FOREIGN KEY (target_profile_id) REFERENCES profiles(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_recent ON supervisor_audit(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_target ON supervisor_audit(target_profile_id, id DESC);
   `)
 
   // Migrations: add columns that may be missing from older databases
@@ -196,7 +252,16 @@ export function addLogEntry(profileId: string, type: string, summary: string, de
   const result = getDb().query(
     'INSERT INTO log_entries (profile_id, type, summary, detail) VALUES (?, ?, ?, ?)'
   ).run(profileId, type, summary, detail ?? null)
-  return Number(result.lastInsertRowid)
+  const id = Number(result.lastInsertRowid)
+  if (type === 'llm_call' && logEntryHook) {
+    try { logEntryHook(profileId, type) } catch { /* swallow — hooks must not crash logging */ }
+  }
+  return id
+}
+
+let logEntryHook: ((profileId: string, type: string) => void) | null = null
+export function setLogEntryHook(fn: ((profileId: string, type: string) => void) | null): void {
+  logEntryHook = fn
 }
 
 export function getLogEntries(profileId: string, afterId?: number, limit: number = 100): LogEntry[] {

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Dashboard } from '@/components/Dashboard'
 import { ProviderSetup } from '@/components/ProviderSetup'
+import { SupervisorPanel } from '@/components/SupervisorPanel'
+import { SupervisorOverlayProvider } from '@/components/SupervisorOverlayContext'
 import type { Profile, Provider } from '@/types'
 
 export function Home() {
@@ -8,6 +10,7 @@ export function Home() {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
+  const [showSupervisor, setShowSupervisor] = useState(false)
   const [registrationCode, setRegistrationCode] = useState('')
   const [gameserverUrl, setGameserverUrl] = useState('https://game.spacemolt.com')
   const [maxTurns, setMaxTurns] = useState(30)
@@ -116,7 +119,7 @@ export function Home() {
   }
 
   return (
-    <>
+    <SupervisorOverlayProvider value={{ open: () => setShowSupervisor(true) }}>
       <Dashboard
         profiles={profiles}
         providers={providers}
@@ -125,6 +128,7 @@ export function Home() {
         onRefresh={loadData}
         onShowProviders={() => setShowSettings(true)}
       />
+      {showSupervisor && <SupervisorPanel onClose={() => setShowSupervisor(false)} />}
       {showSettings && (
         <ProviderSetup
           providers={providers}
@@ -142,6 +146,6 @@ export function Home() {
           }}
         />
       )}
-    </>
+    </SupervisorOverlayProvider>
   )
 }

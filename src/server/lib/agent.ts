@@ -40,6 +40,7 @@ export class Agent {
   private restartRequested = false
   private pendingNudges: string[] = []
   private _activity: string = 'idle'
+  private _lastActivityChangeMs = Date.now()
   private _gameState: Record<string, unknown> | null = null
   private _sessionExpired = false
 
@@ -90,8 +91,15 @@ export class Agent {
   }
 
   private setActivity(activity: string) {
+    if (this._activity !== activity) {
+      this._lastActivityChangeMs = Date.now()
+    }
     this._activity = activity
     this.events.emit('activity', activity)
+  }
+
+  get lastActivityChangeMs(): number {
+    return this._lastActivityChangeMs
   }
 
   private cacheGameState(result: CommandResult): void {

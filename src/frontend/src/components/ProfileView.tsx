@@ -11,6 +11,7 @@ import { CommandPanel } from './CommandPanel'
 import { QuickCommands } from './QuickCommands'
 import { LogPane } from './LogPane'
 import { SidePane } from './SidePane'
+import { SupervisorBadge } from './SupervisorBadge'
 
 /**
  * Parse the rendered text from MCP v2 get_status into structured player data.
@@ -571,6 +572,8 @@ export function ProfileView({ profile, providers, status, playerData, onPlayerDa
             </div>
           )}
         </div>
+
+        <SupervisorBadge profileId={profile.id} />
 
         {/* Player color swatch + Editable @username / credentials */}
         {playerData && (playerData.player as Record<string, unknown>)?.color_primary ? (
