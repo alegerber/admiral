@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from './ui/button'
 import { Overlay } from './ui/overlay'
+import { ModelPicker } from '@/components/ModelPicker'
 
 interface Config {
   enabled: boolean
@@ -43,15 +44,17 @@ export function SupervisorPanel({ onClose }: SupervisorPanelProps) {
   const [status, setStatus] = useState<Status | null>(null)
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [audit, setAudit] = useState<AuditEntry[]>([])
+  const [providers, setProviders] = useState<{ id: string; status?: string }[]>([])
 
   const refresh = async () => {
-    const [c, s, p, a] = await Promise.all([
+    const [c, s, p, a, pv] = await Promise.all([
       fetch('/api/supervisor/config').then(r => r.json()),
       fetch('/api/supervisor/status').then(r => r.json()),
       fetch('/api/supervisor/proposals?status=pending').then(r => r.json()),
       fetch('/api/supervisor/audit?limit=20').then(r => r.json()),
+      fetch('/api/providers').then(r => r.json()),
     ])
-    setConfig(c); setStatus(s); setProposals(p); setAudit(a)
+    setConfig(c); setStatus(s); setProposals(p); setAudit(a); setProviders(pv)
   }
 
   useEffect(() => {
@@ -60,14 +63,21 @@ export function SupervisorPanel({ onClose }: SupervisorPanelProps) {
     return () => clearInterval(id)
   }, [])
 
-  const toggleEnabled = async () => {
+  const updateConfig = async (patch: Partial<Config>) => {
     if (!config) return
+    // Optimistic local update so the UI doesn't flicker
+    setConfig({ ...config, ...patch })
     await fetch('/api/supervisor/config', {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ enabled: !config.enabled }),
+      body: JSON.stringify(patch),
     })
     refresh()
+  }
+
+  const toggleEnabled = () => {
+    if (!config) return
+    updateConfig({ enabled: !config.enabled })
   }
 
   const apply = async (id: number) => {
@@ -90,9 +100,39 @@ export function SupervisorPanel({ onClose }: SupervisorPanelProps) {
 
   return (
     <Overlay title="Supervisor" onClose={onClose}>
+      {/* Configuration section */}
+      <div>
+        <span className="text-[11px] text-[hsl(var(--smui-orange))] uppercase tracking-[1.5px] font-medium">Configuration</span>
+        <div className="space-y-2.5 mt-2.5">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground w-28 shrink-0">Provider</span>
+            <select
+              value={config.provider}
+              onChange={e => updateConfig({ provider: e.target.value, model: '' })}
+              className="bg-background border border-border rounded px-2 py-1 text-xs flex-1"
+            >
+              <option value="">(none)</option>
+              {providers.map(p => (
+                <option key={p.id} value={p.id}>{p.id}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground w-28 shrink-0">Model</span>
+            <div className="flex-1">
+              <ModelPicker
+                provider={config.provider}
+                value={config.model}
+                onChange={(v) => updateConfig({ model: v })}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Status section */}
       <div>
-        <span className="text-[11px] text-[hsl(var(--smui-orange))] uppercase tracking-[1.5px] font-medium">Status</span>
+        <span className="text-[11px] text-[hsl(var(--smui-frost-2))] uppercase tracking-[1.5px] font-medium">Status</span>
         <div className="space-y-2.5 mt-2.5">
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground w-28 shrink-0">State</span>
@@ -108,10 +148,6 @@ export function SupervisorPanel({ onClose }: SupervisorPanelProps) {
             >
               {config.enabled ? 'Disable' : 'Enable'}
             </Button>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground w-28 shrink-0">Model</span>
-            <span className="text-xs text-foreground">{config.model || '(none)'}</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs text-muted-foreground w-28 shrink-0">Last tick</span>
