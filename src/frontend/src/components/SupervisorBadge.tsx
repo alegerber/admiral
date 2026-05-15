@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router'
 import { Badge } from './ui/badge'
+import { useSupervisorOverlay } from './SupervisorOverlayContext'
 
 export function SupervisorBadge({ profileId }: { profileId: string }) {
   const [pendingCount, setPendingCount] = useState(0)
+  const { open } = useSupervisorOverlay()
 
   useEffect(() => {
     const refresh = async () => {
@@ -12,7 +13,7 @@ export function SupervisorBadge({ profileId }: { profileId: string }) {
         const data = await r.json() as { id: number }[]
         setPendingCount(data.length)
       } catch {
-        // ignore — supervisor may be disabled or server offline
+        // ignore
       }
     }
     refresh()
@@ -23,10 +24,10 @@ export function SupervisorBadge({ profileId }: { profileId: string }) {
   if (pendingCount === 0) return null
 
   return (
-    <Link to="?supervisor=open">
+    <button onClick={open} className="cursor-pointer bg-transparent border-0 p-0">
       <Badge variant="destructive" className="cursor-pointer">
         ⚠ {pendingCount} supervisor proposal{pendingCount > 1 ? 's' : ''}
       </Badge>
-    </Link>
+    </button>
   )
 }
