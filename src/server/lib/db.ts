@@ -252,7 +252,16 @@ export function addLogEntry(profileId: string, type: string, summary: string, de
   const result = getDb().query(
     'INSERT INTO log_entries (profile_id, type, summary, detail) VALUES (?, ?, ?, ?)'
   ).run(profileId, type, summary, detail ?? null)
-  return Number(result.lastInsertRowid)
+  const id = Number(result.lastInsertRowid)
+  if (type === 'llm_call' && logEntryHook) {
+    try { logEntryHook(profileId, type) } catch { /* swallow — hooks must not crash logging */ }
+  }
+  return id
+}
+
+let logEntryHook: ((profileId: string, type: string) => void) | null = null
+export function setLogEntryHook(fn: ((profileId: string, type: string) => void) | null): void {
+  logEntryHook = fn
 }
 
 export function getLogEntries(profileId: string, afterId?: number, limit: number = 100): LogEntry[] {
