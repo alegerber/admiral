@@ -73,6 +73,44 @@ function migrate(db: Database): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_log_profile ON log_entries(profile_id, id);
+
+    CREATE TABLE IF NOT EXISTS supervisor_notes (
+      profile_id    TEXT PRIMARY KEY,
+      observations  TEXT NOT NULL DEFAULT '',
+      last_strategy TEXT NOT NULL DEFAULT '',
+      open_concerns TEXT NOT NULL DEFAULT '',
+      updated_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS supervisor_proposals (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      profile_id  TEXT NOT NULL,
+      action      TEXT NOT NULL,
+      payload     TEXT NOT NULL,
+      reasoning   TEXT NOT NULL,
+      status      TEXT NOT NULL DEFAULT 'pending',
+      created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+      resolved_at TEXT,
+      FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_proposals_pending
+      ON supervisor_proposals(status, created_at)
+      WHERE status = 'pending';
+
+    CREATE TABLE IF NOT EXISTS supervisor_audit (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp  TEXT NOT NULL DEFAULT (datetime('now')),
+      event_type TEXT NOT NULL,
+      target_profile_id TEXT,
+      summary    TEXT NOT NULL,
+      detail     TEXT,
+      FOREIGN KEY (target_profile_id) REFERENCES profiles(id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON supervisor_audit(id DESC);
+    CREATE INDEX IF NOT EXISTS idx_audit_target ON supervisor_audit(target_profile_id, id DESC);
   `)
 
   // Migrations: add columns that may be missing from older databases
