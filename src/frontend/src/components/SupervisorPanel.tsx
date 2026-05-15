@@ -112,7 +112,7 @@ export function SupervisorPanel({ onClose }: SupervisorPanelProps) {
               className="bg-background border border-border rounded px-2 py-1 text-xs flex-1"
             >
               <option value="">(none)</option>
-              {providers.map(p => (
+              {providers.filter(p => p.status === 'valid').map(p => (
                 <option key={p.id} value={p.id}>{p.id}</option>
               ))}
             </select>
