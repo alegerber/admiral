@@ -7,7 +7,7 @@ import { resolveModel } from '../model'
 import { getProvider } from '../db'
 import { complete } from '@mariozechner/pi-ai'
 import type { AgentManagerLike } from './tools'
-import type { ProviderResolver } from './loop'
+import type { ProviderResolver, CompleteFn } from './loop'
 
 export interface SupervisorManagerDeps {
   agentManager: AgentManagerLike & {
@@ -75,7 +75,7 @@ export class SupervisorManager {
     const signals = computeSignals(profileId, cfg.thresholds, snap)
     if (signals.cost_spike) {
       insertAudit('anomaly_detected', profileId, `Cost spike (event hook): ${signalSummary(signals)}`, signals)
-      this.enqueue(profileId, signals).catch(() => { /* logged inside enqueue */ })
+      this.enqueue(profileId, signals).catch(() => { /* loop.ts handles LLM errors; pre-loop failures are swallowed */ })
     }
   }
 
@@ -90,9 +90,9 @@ export class SupervisorManager {
       return
     }
     const runFn = this.deps.runSupervisorTurn ?? ((id, sig) => defaultRunSupervisorTurn(id, sig, {
-      manager: this.deps.agentManager as any,
+      manager: this.deps.agentManager,
       provider: this.buildProvider(),
-      complete: complete as any,
+      complete: complete as CompleteFn,
     }))
     const promise = runFn(profileId, signals).finally(() => {
       this.inflight.delete(profileId)
@@ -105,7 +105,7 @@ export class SupervisorManager {
     const status = this.deps.agentManager.getStatus(profileId)
     const lastActivityChangeMs = this.deps.getActivitySnapshot
       ? this.deps.getActivitySnapshot(profileId).lastActivityChangeMs
-      : Date.now()  // pessimistic default
+      : Date.now()  // optimistic default: assume agent was just active to avoid false positives on cold start
     return {
       isRunning: status.running,
       isPaused: status.paused,
