@@ -43,4 +43,30 @@ describe('supervisor config', () => {
     const cfg = loadConfig()
     expect(cfg.thresholds).toEqual(DEFAULT_THRESHOLDS)
   })
+
+  it('falls back to defaults when thresholds JSON is an array or null', () => {
+    // Array case
+    getDb().query('UPDATE preferences SET value = ? WHERE key = ?')
+      .run('[1,2,3]', 'supervisor.watchdog_thresholds')
+    // If the row didn't exist (fresh DB), insert it
+    if (getDb().query('SELECT 1 FROM preferences WHERE key = ?').get('supervisor.watchdog_thresholds') === null) {
+      getDb().query('INSERT INTO preferences (key, value) VALUES (?, ?)')
+        .run('supervisor.watchdog_thresholds', '[1,2,3]')
+    }
+    let cfg = loadConfig()
+    expect(cfg.thresholds).toEqual(DEFAULT_THRESHOLDS)
+
+    // null case
+    getDb().query('UPDATE preferences SET value = ? WHERE key = ?')
+      .run('null', 'supervisor.watchdog_thresholds')
+    cfg = loadConfig()
+    expect(cfg.thresholds).toEqual(DEFAULT_THRESHOLDS)
+  })
+
+  it('falls back to default tickIntervalSeconds when stored value is non-numeric', () => {
+    getDb().query('INSERT INTO preferences (key, value) VALUES (?, ?)')
+      .run('supervisor.tick_interval_seconds', 'not-a-number')
+    const cfg = loadConfig()
+    expect(cfg.tickIntervalSeconds).toBe(60)
+  })
 })

@@ -37,20 +37,14 @@ export interface SupervisorConfig {
   thresholds: WatchdogThresholds
 }
 
-const DEFAULT_CONFIG: SupervisorConfig = {
-  enabled: false,
-  provider: '',
-  model: '',
-  systemPrompt: '',
-  tickIntervalSeconds: 60,
-  thresholds: DEFAULT_THRESHOLDS,
-}
-
 function parseThresholds(raw: string | null): WatchdogThresholds {
   if (!raw) return DEFAULT_THRESHOLDS
   try {
-    const parsed = JSON.parse(raw)
-    return { ...DEFAULT_THRESHOLDS, ...parsed }
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return DEFAULT_THRESHOLDS
+    }
+    return { ...DEFAULT_THRESHOLDS, ...(parsed as Partial<WatchdogThresholds>) }
   } catch {
     return DEFAULT_THRESHOLDS
   }
@@ -62,7 +56,7 @@ export function loadConfig(): SupervisorConfig {
     provider: getPreference('supervisor.provider') ?? '',
     model: getPreference('supervisor.model') ?? '',
     systemPrompt: getPreference('supervisor.system_prompt') ?? '',
-    tickIntervalSeconds: Number(getPreference('supervisor.tick_interval_seconds') ?? DEFAULT_CONFIG.tickIntervalSeconds),
+    tickIntervalSeconds: Number(getPreference('supervisor.tick_interval_seconds') ?? 60) || 60,
     thresholds: parseThresholds(getPreference('supervisor.watchdog_thresholds')),
   }
 }
