@@ -49,6 +49,19 @@ describe('proposals', () => {
     expect(p.resolved_at).not.toBeNull()
   })
 
+  it('setProposalStatus is a no-op on non-pending rows', () => {
+    const id = createProposal({ profileId: 'p1', action: 'pause', payload: {}, reasoning: 'r' })
+    setProposalStatus(id, 'applied')
+    const firstResolvedAt = getProposal(id)!.resolved_at
+    expect(firstResolvedAt).not.toBeNull()
+
+    // Attempt to overwrite an already-resolved proposal — must be a no-op
+    setProposalStatus(id, 'rejected')
+    const p = getProposal(id)!
+    expect(p.status).toBe('applied')  // status unchanged
+    expect(p.resolved_at).toBe(firstResolvedAt)  // resolved_at unchanged
+  })
+
   it('expireOldProposals marks old pending as expired', () => {
     // Insert a proposal with manually backdated created_at
     const db = getDb()

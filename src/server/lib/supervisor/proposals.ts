@@ -61,7 +61,9 @@ export function listProposals(opts: ListProposalsOptions): ProposalRow[] {
 
 export function setProposalStatus(id: number, status: ProposalStatus): void {
   getDb().query(
-    `UPDATE supervisor_proposals SET status = ?, resolved_at = datetime('now') WHERE id = ?`,
+    `UPDATE supervisor_proposals
+     SET status = ?, resolved_at = datetime('now')
+     WHERE id = ? AND status = 'pending'`,
   ).run(status, id)
 }
 
