@@ -26,7 +26,7 @@ Expected: Resolves and installs all deps without errors. If the sandbox blocks `
 
 - [ ] **Step 2: Run existing tests to confirm clean baseline**
 
-Run: `bunx vitest run`
+Run: `bun test`
 
 Expected: All existing tests pass (currently only `src/server/lib/tools.test.ts`). If any fail, do NOT proceed — investigate or ask user.
 
@@ -175,7 +175,7 @@ if (db) {
 
 - [ ] **Step 3: Verify existing tests still pass**
 
-Run: `bunx vitest run src/server/lib/tools.test.ts`
+Run: `bun test src/server/lib/tools.test.ts`
 
 Expected: PASS (no behavior change for the default file-based path).
 
@@ -255,7 +255,7 @@ describe('audit', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bunx vitest run src/server/lib/supervisor/audit.test.ts`
+Run: `bun test src/server/lib/supervisor/audit.test.ts`
 
 Expected: FAIL — `audit.ts` doesn't exist yet.
 
@@ -330,7 +330,7 @@ export function listAudit(opts: ListAuditOptions = {}): AuditRow[] {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `bunx vitest run src/server/lib/supervisor/audit.test.ts`
+Run: `bun test src/server/lib/supervisor/audit.test.ts`
 
 Expected: PASS (all 4 tests).
 
@@ -411,7 +411,7 @@ describe('notes', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bunx vitest run src/server/lib/supervisor/notes.test.ts`
+Run: `bun test src/server/lib/supervisor/notes.test.ts`
 
 Expected: FAIL.
 
@@ -468,7 +468,7 @@ export function deleteNotes(profileId: string): void {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `bunx vitest run src/server/lib/supervisor/notes.test.ts`
+Run: `bun test src/server/lib/supervisor/notes.test.ts`
 
 Expected: PASS (all 5 tests).
 
@@ -567,7 +567,7 @@ describe('proposals', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bunx vitest run src/server/lib/supervisor/proposals.test.ts`
+Run: `bun test src/server/lib/supervisor/proposals.test.ts`
 
 Expected: FAIL.
 
@@ -655,7 +655,7 @@ export function expireOldProposals(hours: number): number {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `bunx vitest run src/server/lib/supervisor/proposals.test.ts`
+Run: `bun test src/server/lib/supervisor/proposals.test.ts`
 
 Expected: PASS (all 4 tests).
 
@@ -729,7 +729,7 @@ describe('supervisor config', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bunx vitest run src/server/lib/supervisor/config.test.ts`
+Run: `bun test src/server/lib/supervisor/config.test.ts`
 
 Expected: FAIL.
 
@@ -819,7 +819,7 @@ export function saveConfig(cfg: SupervisorConfig): void {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `bunx vitest run src/server/lib/supervisor/config.test.ts`
+Run: `bun test src/server/lib/supervisor/config.test.ts`
 
 Expected: PASS (all 3 tests).
 
@@ -908,7 +908,7 @@ describe('watchdog signals', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bunx vitest run src/server/lib/supervisor/watchdog.test.ts`
+Run: `bun test src/server/lib/supervisor/watchdog.test.ts`
 
 Expected: FAIL.
 
@@ -1053,7 +1053,7 @@ function sumLlmCallCost(profileId: string, minutes: number): number {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `bunx vitest run src/server/lib/supervisor/watchdog.test.ts`
+Run: `bun test src/server/lib/supervisor/watchdog.test.ts`
 
 Expected: PASS (all 6 tests).
 
@@ -1122,7 +1122,7 @@ describe('prompt builder', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bunx vitest run src/server/lib/supervisor/prompt.test.ts`
+Run: `bun test src/server/lib/supervisor/prompt.test.ts`
 
 Expected: FAIL.
 
@@ -1204,7 +1204,7 @@ Decide what to do. Call exactly the tools you need (often zero or one). Always e
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `bunx vitest run src/server/lib/supervisor/prompt.test.ts`
+Run: `bun test src/server/lib/supervisor/prompt.test.ts`
 
 Expected: PASS (all 3 tests).
 
@@ -1332,7 +1332,7 @@ describe('supervisor tools', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bunx vitest run src/server/lib/supervisor/tools.test.ts`
+Run: `bun test src/server/lib/supervisor/tools.test.ts`
 
 Expected: FAIL.
 
@@ -1515,7 +1515,7 @@ export function getProfile(id: string): Record<string, unknown> | null {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `bunx vitest run src/server/lib/supervisor/tools.test.ts`
+Run: `bun test src/server/lib/supervisor/tools.test.ts`
 
 Expected: PASS (all 7 tests).
 
@@ -1628,7 +1628,7 @@ describe('supervisor loop', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bunx vitest run src/server/lib/supervisor/loop.test.ts`
+Run: `bun test src/server/lib/supervisor/loop.test.ts`
 
 Expected: FAIL.
 
@@ -1730,7 +1730,7 @@ export async function runSupervisorTurn(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `bunx vitest run src/server/lib/supervisor/loop.test.ts`
+Run: `bun test src/server/lib/supervisor/loop.test.ts`
 
 Expected: PASS (all 3 tests).
 
@@ -1851,7 +1851,7 @@ describe('SupervisorManager', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `bunx vitest run src/server/lib/supervisor/manager.test.ts`
+Run: `bun test src/server/lib/supervisor/manager.test.ts`
 
 Expected: FAIL.
 
@@ -1992,7 +1992,7 @@ If `resolveModel` or `getProviderApiKey` don't exist with those names, find the 
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `bunx vitest run src/server/lib/supervisor/manager.test.ts`
+Run: `bun test src/server/lib/supervisor/manager.test.ts`
 
 Expected: PASS (all 3 tests).
 
@@ -2071,7 +2071,7 @@ it('onLlmCall triggers supervisor when cost_spike fires', async () => {
 })
 ```
 
-Run: `bunx vitest run src/server/lib/supervisor/manager.test.ts`
+Run: `bun test src/server/lib/supervisor/manager.test.ts`
 
 Expected: PASS including the new test.
 
@@ -2553,7 +2553,7 @@ git commit -m "feat(supervisor): add SupervisorBadge in ProfileView"
 
 - [ ] **Step 1: Run all tests**
 
-Run: `bunx vitest run`
+Run: `bun test`
 
 Expected: All tests pass. No failures.
 
@@ -2618,6 +2618,6 @@ Example: `gh pr create --title "feat: Supervisor Agent" --body-file docs/specs/2
 
 4. **`updateProfile` signature mismatch.** Task 5.1's Apply handler calls `updateProfile(id, { directive })`. Verify against `db.ts:185`. The existing function may accept a different shape (e.g., a whole `Profile` row); adapt the call.
 
-5. **`bun:test` vs `vitest`.** The repo has `tools.test.ts` using `bun:test`. The CLAUDE.md PostToolUse hook runs `npx vitest run`. Both should work for these tests since `vitest` understands `bun:test`-style imports, but if any test fails only under one runner, prefer `bun:test` (matching the existing convention).
+5. **Test runner is `bun test`, NOT `vitest`.** Despite CLAUDE.md mentioning a PostToolUse vitest hook, the repo's actual tests (`tools.test.ts`) use `bun:test` imports, which vitest cannot resolve. All test commands in this plan use `bun test`. If the vitest hook fires automatically on edits and fails, that's expected — it does not block our work.
 
 6. **Pi-AI's `complete()` tool format.** Verify the shape of `tools` parameter — the spec assumes pi-ai accepts an array of `{ name, description, parameters }`. If pi-ai expects a different shape, adapt `supervisorToolDefinitions` accordingly. Run a single integration call to confirm before relying on it in the full loop.
