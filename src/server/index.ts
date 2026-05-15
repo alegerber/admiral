@@ -9,6 +9,7 @@ import providers from './routes/providers'
 import models from './routes/models'
 import commands from './routes/commands'
 import preferences from './routes/preferences'
+import supervisor from './routes/supervisor'
 import { SupervisorManager, supervisorManager } from './lib/supervisor/manager'
 import { agentManager } from './lib/agent-manager'
 import { setLogEntryHook } from './lib/db'
@@ -23,6 +24,7 @@ app.route('/api/providers', providers)
 app.route('/api/models', models)
 app.route('/api/commands', commands)
 app.route('/api/preferences', preferences)
+app.route('/api/supervisor', supervisor)
 
 // Supervisor wiring (additive — no-op if config.enabled is false)
 supervisorManager.instance = new SupervisorManager({
