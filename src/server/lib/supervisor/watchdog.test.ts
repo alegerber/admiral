@@ -56,4 +56,36 @@ describe('watchdog signals', () => {
     expect(text).toContain('cost_spike')
     expect(text).not.toContain('no_llm_progress')
   })
+
+  it('no_llm_progress fires when no llm_call logs AND activity is stale', () => {
+    // No llm_call logs inserted; activity is older than the threshold
+    const longAgo = Date.now() - 10 * 60_000
+    const sig = computeSignals('p1', DEFAULT_THRESHOLDS, { isRunning: true, isPaused: false, lastActivityChangeMs: longAgo, gameState: null })
+    expect(sig.no_llm_progress).toBe(true)
+  })
+
+  it('max_rounds_repeated fires when system logs about max tool rounds reach the threshold', () => {
+    addLogEntry('p1', 'system', 'Reached max tool rounds (30), ending turn')
+    addLogEntry('p1', 'system', 'Reached max tool rounds (30), ending turn')
+    const sig = computeSignals('p1', DEFAULT_THRESHOLDS, { isRunning: true, isPaused: false, lastActivityChangeMs: Date.now(), gameState: null })
+    expect(sig.max_rounds_repeated).toBe(true)
+  })
+
+  it('state_log_mismatch fires when productive tool_call logs exist but activity is stale', () => {
+    addLogEntry('p1', 'tool_call', 'mine()')
+    addLogEntry('p1', 'tool_call', 'trade()')
+    const longAgo = Date.now() - 15 * 60_000
+    const sig = computeSignals('p1', DEFAULT_THRESHOLDS, { isRunning: true, isPaused: false, lastActivityChangeMs: longAgo, gameState: { credits: 1000 } })
+    expect(sig.state_log_mismatch).toBe(true)
+  })
+
+  it('cost_spike survives non-numeric cost values in log detail', () => {
+    // Insert two well-formed cost entries that together exceed threshold
+    addLogEntry('p1', 'llm_call', 'good1', JSON.stringify({ usage: { cost: { total: 0.30 } } }))
+    addLogEntry('p1', 'llm_call', 'good2', JSON.stringify({ usage: { cost: { total: 0.30 } } }))
+    // Insert a malformed-type entry that should be skipped, not contaminate the sum
+    addLogEntry('p1', 'llm_call', 'bad', JSON.stringify({ usage: { cost: { total: 'not a number' } } }))
+    const sig = computeSignals('p1', DEFAULT_THRESHOLDS, { isRunning: true, isPaused: false, lastActivityChangeMs: Date.now(), gameState: null })
+    expect(sig.cost_spike).toBe(true)  // 0.60 >= 0.50 — the bad entry should NOT zero out the running total
+  })
 })

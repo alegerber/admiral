@@ -121,7 +121,8 @@ function sumLlmCallCost(profileId: string, minutes: number): number {
     if (!r.detail) continue
     try {
       const parsed = JSON.parse(r.detail)
-      total += parsed?.usage?.cost?.total ?? 0
+      const cost = Number(parsed?.usage?.cost?.total)
+      if (Number.isFinite(cost)) total += cost
     } catch { /* ignore malformed entries */ }
   }
   return total
