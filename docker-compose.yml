@@ -4,35 +4,17 @@ services:
     image: admiral:latest
     container_name: admiral
     restart: unless-stopped
-    expose:
-      - "3031"
+    ports:
+      - "80:3031"
+      - "443:3031"
     environment:
       PORT: "3031"
       NODE_ENV: production
     volumes:
       - ./data:/app/data
-    networks:
-      - admiral-net
     healthcheck:
       test: ["CMD", "bun", "-e", "fetch('http://127.0.0.1:3031/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
-
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: admiral-cloudflared
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN missing in .env}
-    depends_on:
-      admiral:
-        condition: service_healthy
-    networks:
-      - admiral-net
-
-networks:
-  admiral-net:
-    driver: bridge
