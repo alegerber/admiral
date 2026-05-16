@@ -125,6 +125,26 @@ describe('McpConnection background notification polling', () => {
     // No new fetches after disconnect
     expect(mock.calls.length).toBe(callsAtDisconnect)
   })
+
+  it('dispatches received notifications to registered handlers', async () => {
+    const notifPayload = { type: 'attack', from: 'pirate' }
+    const notifResult = {
+      body: { jsonrpc: '2.0', id: 99, result: { content: [{ type: 'text', text: JSON.stringify({ notifications: [notifPayload] }) }] } },
+    }
+    mock = installFetchMock([initOk, notifResult])
+
+    const received: unknown[] = []
+    const conn = new McpConnection('http://server')
+    ;(conn as unknown as { notificationPollIntervalMs: number }).notificationPollIntervalMs = 10
+    conn.onNotification(n => received.push(n))
+
+    await conn.connect()
+    await new Promise(r => setTimeout(r, 35))
+    await conn.disconnect()
+
+    expect(received.length).toBeGreaterThan(0)
+    expect(received[0]).toEqual(notifPayload)
+  })
 })
 
 const toolsListReply = {
@@ -239,5 +259,25 @@ describe('McpV2Connection request volume + background polling', () => {
     const stable = mock.calls.length
     await new Promise(r => setTimeout(r, 30))
     expect(mock.calls.length).toBe(stable)
+  })
+
+  it('dispatches received notifications to registered handlers', async () => {
+    const notifPayload = { type: 'attack', from: 'pirate' }
+    const notifResult = {
+      body: { jsonrpc: '2.0', id: 99, result: { content: [{ type: 'text', text: JSON.stringify({ notifications: [notifPayload] }) }] } },
+    }
+    mock = installFetchMock([initOk, initOk, toolsListReply, notifResult])
+
+    const received: unknown[] = []
+    const conn = new McpV2Connection('http://server')
+    ;(conn as unknown as { notificationPollIntervalMs: number }).notificationPollIntervalMs = 10
+    conn.onNotification(n => received.push(n))
+
+    await conn.connect()
+    await new Promise(r => setTimeout(r, 35))
+    await conn.disconnect()
+
+    expect(received.length).toBeGreaterThan(0)
+    expect(received[0]).toEqual(notifPayload)
   })
 })
