@@ -149,3 +149,53 @@ describe('McpV2Connection rate-limit handling', () => {
     await conn.disconnect()
   })
 })
+
+describe('McpV2Connection request volume + background polling', () => {
+  let mock: ReturnType<typeof installFetchMock>
+  afterEach(() => mock?.restore())
+
+  it('execute() issues exactly one tool-call fetch per command', async () => {
+    mock = installFetchMock([
+      initOk,
+      initOk,
+      toolsListReply,
+      { body: { jsonrpc: '2.0', id: 4, result: { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] } } },
+      { body: { jsonrpc: '2.0', id: 5, result: { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] } } },
+    ])
+
+    const conn = new McpV2Connection('http://server')
+    await conn.connect()
+    const before = mock.calls.length
+    await conn.execute('get_status', {})
+    await conn.execute('get_cargo', {})
+    // Two execute() calls → exactly two new fetches, not four.
+    expect(mock.calls.length - before).toBe(2)
+    await conn.disconnect()
+  })
+
+  it('starts polling after connect and stops after disconnect', async () => {
+    const notifEmpty = {
+      body: { jsonrpc: '2.0', id: 99, result: { content: [{ type: 'text', text: JSON.stringify({ notifications: [] }) }] } },
+    }
+    mock = installFetchMock([
+      initOk,
+      initOk,
+      toolsListReply,
+      notifEmpty, notifEmpty, notifEmpty, notifEmpty, notifEmpty,
+    ])
+
+    const conn = new McpV2Connection('http://server')
+    ;(conn as unknown as { notificationPollIntervalMs: number }).notificationPollIntervalMs = 10
+    conn.onNotification(() => {})
+
+    await conn.connect()
+    const callsAtConnect = mock.calls.length
+    await new Promise(r => setTimeout(r, 35))
+    expect(mock.calls.length).toBeGreaterThan(callsAtConnect)
+
+    await conn.disconnect()
+    const stable = mock.calls.length
+    await new Promise(r => setTimeout(r, 30))
+    expect(mock.calls.length).toBe(stable)
+  })
+})

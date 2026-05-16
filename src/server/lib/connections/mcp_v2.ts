@@ -19,6 +19,9 @@ export class McpV2Connection implements GameConnection {
   private sessionId: string | null = null
   private notificationHandlers: NotificationHandler[] = []
   private connected = false
+  private notificationTimer: ReturnType<typeof setInterval> | null = null
+  private notificationPollIntervalMs = 3000
+  private polling = false
   private jsonRpcId = 0
   /** Map from action name to v2 tool name */
   private actionToTool: Map<string, string> = new Map()
@@ -46,6 +49,43 @@ export class McpV2Connection implements GameConnection {
     await this.discoverTools()
 
     this.connected = true
+    this.startNotificationPolling()
+  }
+
+  private startNotificationPolling(): void {
+    if (this.notificationTimer) return
+    this.notificationTimer = setInterval(() => {
+      void this.pollNotifications()
+    }, this.notificationPollIntervalMs)
+  }
+
+  private async pollNotifications(): Promise<void> {
+    // Skip the round-trip when nobody is listening, or when a previous poll
+    // is still in flight (laptop sleep + setInterval can queue several ticks
+    // — without this guard a resume would burst-fire requests, exactly the
+    // rate-limit pattern this connection is trying to avoid).
+    if (this.polling || !this.connected || this.notificationHandlers.length === 0) return
+    const notifTool = this.actionToTool.get('get_notifications')
+    if (!notifTool) return
+    this.polling = true
+    try {
+      const resp = await this.callTool(notifTool, { action: 'get_notifications' })
+      // Re-check after the await: disconnect() may have fired while we waited.
+      if (!this.connected) return
+      if (resp.error) return
+      const { parsed } = this.parseToolResult(resp.result)
+      const notifications = parsed?.notifications
+      if (!Array.isArray(notifications)) return
+      for (const n of notifications) {
+        for (const handler of this.notificationHandlers) {
+          handler(n)
+        }
+      }
+    } catch {
+      // Best-effort
+    } finally {
+      this.polling = false
+    }
   }
 
   private async discoverTools(): Promise<void> {
@@ -204,6 +244,10 @@ export class McpV2Connection implements GameConnection {
   }
 
   async disconnect(): Promise<void> {
+    if (this.notificationTimer) {
+      clearInterval(this.notificationTimer)
+      this.notificationTimer = null
+    }
     this.sessionId = null
     this.connected = false
   }
