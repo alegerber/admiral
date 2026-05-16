@@ -62,7 +62,9 @@ export class McpConnection implements GameConnection {
   async execute(command: string, args?: Record<string, unknown>): Promise<CommandResult> {
     const resp = await this.callTool(command, args || {})
 
-    // JSON-RPC -32029: rate limited. Parse seconds from message, sleep, retry.
+    // JSON-RPC -32029: rate limited. The message ("Try again in N seconds")
+    // is the only signal — MCP has no structured retry_after field. Default
+    // 30s when the message is malformed, covering the worst documented window.
     if (resp.error && resp.error.code === -32029) {
       const match = /(\d+)\s*seconds?/i.exec(resp.error.message || '')
       const secs = match ? parseInt(match[1], 10) : 30
