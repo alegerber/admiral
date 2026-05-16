@@ -72,6 +72,7 @@ export class McpV2Connection implements GameConnection {
       const resp = await this.callTool(notifTool, { action: 'get_notifications' })
       // Re-check after the await: disconnect() may have fired while we waited.
       if (!this.connected) return
+      // Silently skip if rate-limited — the next interval will retry.
       if (resp.error) return
       const { parsed } = this.parseToolResult(resp.result)
       const notifications = parsed?.notifications
