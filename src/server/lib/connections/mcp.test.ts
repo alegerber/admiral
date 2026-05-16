@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, mock } from 'bun:test'
+import { describe, it, expect, afterEach } from 'bun:test'
 import { McpConnection } from './mcp'
 
 type FetchArgs = [input: string | URL, init?: RequestInit]
