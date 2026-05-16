@@ -46,6 +46,27 @@ describe('McpConnection rate-limit handling', () => {
     expect(mock.calls.length).toBe(3)
     await conn.disconnect()
   })
+
+  it('aborts -32029 retry if disconnect happens during the wait', async () => {
+    mock = installFetchMock([
+      initOk,
+      { body: { jsonrpc: '2.0', id: 2, error: { code: -32029, message: 'Rate limited. Try again in 1 seconds.' } } },
+    ])
+
+    const conn = new McpConnection('http://server')
+    await conn.connect()
+    const before = mock.calls.length
+
+    // Start execute → rate-limited reply arrives → enters 1s sleep.
+    const execPromise = conn.execute('get_status', {})
+    await new Promise(r => setTimeout(r, 20)) // give callTool time to fire and enter sleep
+    await conn.disconnect()                    // disconnect during the wait
+
+    const resp = await execPromise
+    expect(resp.error?.code).toBe('disconnected')
+    // Only the rate-limited fetch happened — no retry after disconnect.
+    expect(mock.calls.length - before).toBe(1)
+  })
 })
 
 describe('McpConnection request volume', () => {
@@ -104,6 +125,26 @@ describe('McpConnection background notification polling', () => {
     // No new fetches after disconnect
     expect(mock.calls.length).toBe(callsAtDisconnect)
   })
+
+  it('dispatches received notifications to registered handlers', async () => {
+    const notifPayload = { type: 'attack', from: 'pirate' }
+    const notifResult = {
+      body: { jsonrpc: '2.0', id: 99, result: { content: [{ type: 'text', text: JSON.stringify({ notifications: [notifPayload] }) }] } },
+    }
+    mock = installFetchMock([initOk, notifResult])
+
+    const received: unknown[] = []
+    const conn = new McpConnection('http://server')
+    ;(conn as unknown as { notificationPollIntervalMs: number }).notificationPollIntervalMs = 10
+    conn.onNotification(n => received.push(n))
+
+    await conn.connect()
+    await new Promise(r => setTimeout(r, 35))
+    await conn.disconnect()
+
+    expect(received.length).toBeGreaterThan(0)
+    expect(received[0]).toEqual(notifPayload)
+  })
 })
 
 const toolsListReply = {
@@ -147,6 +188,27 @@ describe('McpV2Connection rate-limit handling', () => {
     // 3 fetches during connect + rate-limited call + retry — exactly 5
     expect(mock.calls.length).toBe(5)
     await conn.disconnect()
+  })
+
+  it('aborts -32029 retry if disconnect happens during the wait', async () => {
+    mock = installFetchMock([
+      initOk,
+      initOk,
+      toolsListReply,
+      { body: { jsonrpc: '2.0', id: 4, error: { code: -32029, message: 'Rate limited. Try again in 1 seconds.' } } },
+    ])
+
+    const conn = new McpV2Connection('http://server')
+    await conn.connect()
+    const before = mock.calls.length
+
+    const execPromise = conn.execute('get_status', {})
+    await new Promise(r => setTimeout(r, 20))
+    await conn.disconnect()
+
+    const resp = await execPromise
+    expect(resp.error?.code).toBe('disconnected')
+    expect(mock.calls.length - before).toBe(1)
   })
 })
 
@@ -197,5 +259,25 @@ describe('McpV2Connection request volume + background polling', () => {
     const stable = mock.calls.length
     await new Promise(r => setTimeout(r, 30))
     expect(mock.calls.length).toBe(stable)
+  })
+
+  it('dispatches received notifications to registered handlers', async () => {
+    const notifPayload = { type: 'attack', from: 'pirate' }
+    const notifResult = {
+      body: { jsonrpc: '2.0', id: 99, result: { content: [{ type: 'text', text: JSON.stringify({ notifications: [notifPayload] }) }] } },
+    }
+    mock = installFetchMock([initOk, initOk, toolsListReply, notifResult])
+
+    const received: unknown[] = []
+    const conn = new McpV2Connection('http://server')
+    ;(conn as unknown as { notificationPollIntervalMs: number }).notificationPollIntervalMs = 10
+    conn.onNotification(n => received.push(n))
+
+    await conn.connect()
+    await new Promise(r => setTimeout(r, 35))
+    await conn.disconnect()
+
+    expect(received.length).toBeGreaterThan(0)
+    expect(received[0]).toEqual(notifPayload)
   })
 })
