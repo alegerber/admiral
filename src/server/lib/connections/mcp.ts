@@ -61,6 +61,15 @@ export class McpConnection implements GameConnection {
 
   async execute(command: string, args?: Record<string, unknown>): Promise<CommandResult> {
     const resp = await this.callTool(command, args || {})
+
+    // JSON-RPC -32029: rate limited. Parse seconds from message, sleep, retry.
+    if (resp.error && resp.error.code === -32029) {
+      const match = /(\d+)\s*seconds?/i.exec(resp.error.message || '')
+      const secs = match ? parseInt(match[1], 10) : 30
+      await sleep(secs * 1000)
+      return this.execute(command, args)
+    }
+
     if (resp.error) {
       return { error: { code: resp.error.code?.toString() || 'mcp_error', message: resp.error.message || 'Unknown error' } }
     }
@@ -74,22 +83,6 @@ export class McpConnection implements GameConnection {
       this.connected = false
       await this.connect()
       return this.execute(command, args)
-    }
-
-    // Poll notifications
-    try {
-      const notifResp = await this.callTool('get_notifications', {})
-      const notifResult = this.parseToolResult(notifResp.result)
-      if (notifResult?.notifications && Array.isArray(notifResult.notifications)) {
-        for (const n of notifResult.notifications) {
-          for (const handler of this.notificationHandlers) {
-            handler(n)
-          }
-        }
-        return { result, notifications: notifResult.notifications }
-      }
-    } catch {
-      // Notification polling is best-effort
     }
 
     return { result }
@@ -189,4 +182,8 @@ export class McpConnection implements GameConnection {
     }
     return r
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
