@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'bun:test'
 import { McpConnection } from './mcp'
+import { McpV2Connection } from './mcp_v2'
 
 type FetchArgs = [input: string | URL, init?: RequestInit]
 type FetchReply = { status?: number; headers?: Record<string, string>; body: unknown }
@@ -43,6 +44,44 @@ describe('McpConnection rate-limit handling', () => {
     expect(resp.result).toEqual({ ok: true })
     // initialize + rate-limited call + retry — exactly 3, no extra inline poll
     expect(mock.calls.length).toBe(3)
+    await conn.disconnect()
+  })
+})
+
+const toolsListReply = {
+  body: {
+    jsonrpc: '2.0',
+    id: 2,
+    result: {
+      tools: [
+        {
+          name: 'spacemolt',
+          description: 'Main tool',
+          inputSchema: { properties: { action: { enum: ['get_status', 'get_notifications'] } } },
+        },
+      ],
+    },
+  },
+}
+
+describe('McpV2Connection rate-limit handling', () => {
+  let mock: ReturnType<typeof installFetchMock>
+  afterEach(() => mock?.restore())
+
+  it('retries after JSON-RPC -32029 using seconds parsed from message', async () => {
+    mock = installFetchMock([
+      initOk,
+      toolsListReply,
+      { body: { jsonrpc: '2.0', id: 3, error: { code: -32029, message: 'Rate limited. Try again in 0 seconds.' } } },
+      { body: { jsonrpc: '2.0', id: 4, result: { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] } } },
+    ])
+
+    const conn = new McpV2Connection('http://server')
+    await conn.connect()
+    const resp = await conn.execute('get_status', {})
+
+    expect(resp.error).toBeUndefined()
+    expect(resp.result).toEqual({ ok: true })
     await conn.disconnect()
   })
 })

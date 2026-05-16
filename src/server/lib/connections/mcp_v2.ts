@@ -138,6 +138,16 @@ export class McpV2Connection implements GameConnection {
 
     const resp = await this.callTool(toolName, toolArgs)
 
+    // JSON-RPC -32029: rate limited. The message ("Try again in N seconds")
+    // is the only signal — MCP has no structured retry_after field. Default
+    // 30s when the message is malformed, covering the worst documented window.
+    if (resp.error && resp.error.code === -32029) {
+      const match = /(\d+)\s*seconds?/i.exec(resp.error.message || '')
+      const secs = match ? parseInt(match[1], 10) : 30
+      await sleep(secs * 1000)
+      return this.execute(command, args)
+    }
+
     if (resp.error) {
       return { error: { code: resp.error.code?.toString() || 'mcp_error', message: resp.error.message || 'Unknown error' } }
     }
@@ -154,25 +164,6 @@ export class McpV2Connection implements GameConnection {
       this.connected = false
       await this.connect()
       return this.execute(command, args)
-    }
-
-    // Poll notifications
-    const notifTool = this.actionToTool.get('get_notifications')
-    if (notifTool) {
-      try {
-        const notifResp = await this.callTool(notifTool, { action: 'get_notifications' })
-        const { parsed: notifResult } = this.parseToolResult(notifResp.result)
-        if (notifResult?.notifications && Array.isArray(notifResult.notifications)) {
-          for (const n of notifResult.notifications) {
-            for (const handler of this.notificationHandlers) {
-              handler(n)
-            }
-          }
-          return { result, structuredContent, notifications: notifResult.notifications }
-        }
-      } catch {
-        // Notification polling is best-effort
-      }
     }
 
     return { result, structuredContent }
@@ -328,4 +319,8 @@ function parseActionsFromDescription(description: string): string[] {
 function isQueryAction(action: string): boolean {
   return /^(get_|view_|list_|search_|find_|browse_|read_|query_|estimate_|analyze_|forum_list|forum_get|captains_log_list|captains_log_get)/.test(action)
     || action === 'help'
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
