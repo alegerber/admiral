@@ -19,6 +19,9 @@ export class McpV2Connection implements GameConnection {
   private sessionId: string | null = null
   private notificationHandlers: NotificationHandler[] = []
   private connected = false
+  private notificationTimer: ReturnType<typeof setInterval> | null = null
+  private notificationPollIntervalMs = 3000
+  private polling = false
   private jsonRpcId = 0
   /** Map from action name to v2 tool name */
   private actionToTool: Map<string, string> = new Map()
@@ -46,6 +49,44 @@ export class McpV2Connection implements GameConnection {
     await this.discoverTools()
 
     this.connected = true
+    this.startNotificationPolling()
+  }
+
+  private startNotificationPolling(): void {
+    if (this.notificationTimer) return
+    this.notificationTimer = setInterval(() => {
+      void this.pollNotifications()
+    }, this.notificationPollIntervalMs)
+  }
+
+  private async pollNotifications(): Promise<void> {
+    // Skip the round-trip when nobody is listening, or when a previous poll
+    // is still in flight (laptop sleep + setInterval can queue several ticks
+    // — without this guard a resume would burst-fire requests, exactly the
+    // rate-limit pattern this connection is trying to avoid).
+    if (this.polling || !this.connected || this.notificationHandlers.length === 0) return
+    const notifTool = this.actionToTool.get('get_notifications')
+    if (!notifTool) return
+    this.polling = true
+    try {
+      const resp = await this.callTool(notifTool, { action: 'get_notifications' })
+      // Re-check after the await: disconnect() may have fired while we waited.
+      if (!this.connected) return
+      // Silently skip if rate-limited — the next interval will retry.
+      if (resp.error) return
+      const { parsed } = this.parseToolResult(resp.result)
+      const notifications = parsed?.notifications
+      if (!Array.isArray(notifications)) return
+      for (const n of notifications) {
+        for (const handler of this.notificationHandlers) {
+          handler(n)
+        }
+      }
+    } catch {
+      // Best-effort
+    } finally {
+      this.polling = false
+    }
   }
 
   private async discoverTools(): Promise<void> {
@@ -138,38 +179,32 @@ export class McpV2Connection implements GameConnection {
 
     const resp = await this.callTool(toolName, toolArgs)
 
+    // JSON-RPC -32029: rate limited. The message ("Try again in N seconds")
+    // is the only signal — MCP has no structured retry_after field. Default
+    // 30s when the message is malformed, covering the worst documented window.
+    if (resp.error && resp.error.code === -32029) {
+      const match = /(\d+)\s*seconds?/i.exec(resp.error.message || '')
+      const secs = match ? parseInt(match[1], 10) : 30
+      await sleep(secs * 1000)
+      return this.execute(command, args)
+    }
+
     if (resp.error) {
       return { error: { code: resp.error.code?.toString() || 'mcp_error', message: resp.error.message || 'Unknown error' } }
     }
 
-    const { parsed: result, structured: structuredContent } = this.parseToolResult(resp.result)
+    const { parsed, structured: structuredContent, text } = this.parseToolResult(resp.result)
+    // Plain-text responses surface as a string so formatToolResult takes the
+    // string path instead of jsonToYaml-wrapping a {text: ...} object.
+    const result: unknown = text !== null ? text : parsed
 
     // Re-initialize on session expiry and retry once
-    const errCode = (result?.error as Record<string, unknown> | undefined)?.code
+    const errCode = (parsed?.error as Record<string, unknown> | undefined)?.code
     if (errCode === 'session_expired' || errCode === 'session_invalid') {
       this.sessionId = null
       this.connected = false
       await this.connect()
       return this.execute(command, args)
-    }
-
-    // Poll notifications
-    const notifTool = this.actionToTool.get('get_notifications')
-    if (notifTool) {
-      try {
-        const notifResp = await this.callTool(notifTool, { action: 'get_notifications' })
-        const { parsed: notifResult } = this.parseToolResult(notifResp.result)
-        if (notifResult?.notifications && Array.isArray(notifResult.notifications)) {
-          for (const n of notifResult.notifications) {
-            for (const handler of this.notificationHandlers) {
-              handler(n)
-            }
-          }
-          return { result, structuredContent, notifications: notifResult.notifications }
-        }
-      } catch {
-        // Notification polling is best-effort
-      }
     }
 
     return { result, structuredContent }
@@ -210,6 +245,10 @@ export class McpV2Connection implements GameConnection {
   }
 
   async disconnect(): Promise<void> {
+    if (this.notificationTimer) {
+      clearInterval(this.notificationTimer)
+      this.notificationTimer = null
+    }
     this.sessionId = null
     this.connected = false
   }
@@ -268,7 +307,7 @@ export class McpV2Connection implements GameConnection {
       return { error: { message: 'No matching response in SSE stream' } }
     }
 
-    return await resp.json()
+    return await resp.json() as { result?: unknown; error?: { code?: number; message: string } }
   }
 
   private async sendNotification(method: string, params: unknown): Promise<void> {
@@ -279,12 +318,15 @@ export class McpV2Connection implements GameConnection {
     await fetch(this.baseUrl, { method: 'POST', headers, body })
   }
 
-  private parseToolResult(result: unknown): { parsed: Record<string, unknown> | null; structured: unknown } {
-    if (!result) return { parsed: null, structured: null }
+  private parseToolResult(result: unknown): {
+    parsed: Record<string, unknown> | null
+    structured: unknown
+    text: string | null
+  } {
+    if (!result) return { parsed: null, structured: null, text: null }
     const r = result as Record<string, unknown>
-    // MCP v2 returns structuredContent with the actual JSON data (mutations only)
     if (r.structuredContent && typeof r.structuredContent === 'object') {
-      return { parsed: r.structuredContent as Record<string, unknown>, structured: r.structuredContent }
+      return { parsed: r.structuredContent as Record<string, unknown>, structured: r.structuredContent, text: null }
     }
     if (r.content && Array.isArray(r.content)) {
       for (const block of r.content) {
@@ -292,14 +334,14 @@ export class McpV2Connection implements GameConnection {
         if (b.type === 'text' && typeof b.text === 'string') {
           try {
             const json = JSON.parse(b.text)
-            return { parsed: json, structured: json }
+            return { parsed: json, structured: json, text: null }
           } catch {
-            return { parsed: { text: b.text }, structured: null }
+            return { parsed: null, structured: null, text: b.text }
           }
         }
       }
     }
-    return { parsed: r, structured: r }
+    return { parsed: r, structured: r, text: null }
   }
 }
 
@@ -322,4 +364,8 @@ function parseActionsFromDescription(description: string): string[] {
 function isQueryAction(action: string): boolean {
   return /^(get_|view_|list_|search_|find_|browse_|read_|query_|estimate_|analyze_|forum_list|forum_get|captains_log_list|captains_log_get)/.test(action)
     || action === 'help'
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }

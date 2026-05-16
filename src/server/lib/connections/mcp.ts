@@ -8,6 +8,9 @@ export class McpConnection implements GameConnection {
   private notificationHandlers: NotificationHandler[] = []
   private connected = false
   private jsonRpcId = 0
+  private notificationTimer: ReturnType<typeof setInterval> | null = null
+  private notificationPollIntervalMs = 3000
+  private polling = false
 
   constructor(serverUrl: string) {
     this.baseUrl = serverUrl.replace(/\/$/, '') + '/mcp'
@@ -28,6 +31,42 @@ export class McpConnection implements GameConnection {
     // Send initialized notification
     await this.sendNotification('notifications/initialized', {})
     this.connected = true
+    this.startNotificationPolling()
+  }
+
+  private startNotificationPolling(): void {
+    if (this.notificationTimer) return
+    this.notificationTimer = setInterval(() => {
+      void this.pollNotifications()
+    }, this.notificationPollIntervalMs)
+  }
+
+  private async pollNotifications(): Promise<void> {
+    // Skip the round-trip when nobody is listening, or when a previous poll
+    // is still in flight (laptop sleep + setInterval can queue several ticks
+    // — without this guard a resume would burst-fire requests, exactly the
+    // rate-limit pattern this connection is trying to avoid).
+    if (this.polling || !this.connected || this.notificationHandlers.length === 0) return
+    this.polling = true
+    try {
+      const resp = await this.callTool('get_notifications', {})
+      // Re-check after the await: disconnect() may have fired while we waited.
+      if (!this.connected) return
+      // Silently skip if rate-limited — the next interval will retry.
+      if (resp.error) return
+      const parsed = this.parseToolResult(resp.result)
+      const notifications = parsed?.notifications
+      if (!Array.isArray(notifications)) return
+      for (const n of notifications) {
+        for (const handler of this.notificationHandlers) {
+          handler(n)
+        }
+      }
+    } catch {
+      // Best-effort
+    } finally {
+      this.polling = false
+    }
   }
 
   async login(username: string, password: string): Promise<LoginResult> {
@@ -61,6 +100,17 @@ export class McpConnection implements GameConnection {
 
   async execute(command: string, args?: Record<string, unknown>): Promise<CommandResult> {
     const resp = await this.callTool(command, args || {})
+
+    // JSON-RPC -32029: rate limited. The message ("Try again in N seconds")
+    // is the only signal — MCP has no structured retry_after field. Default
+    // 30s when the message is malformed, covering the worst documented window.
+    if (resp.error && resp.error.code === -32029) {
+      const match = /(\d+)\s*seconds?/i.exec(resp.error.message || '')
+      const secs = match ? parseInt(match[1], 10) : 30
+      await sleep(secs * 1000)
+      return this.execute(command, args)
+    }
+
     if (resp.error) {
       return { error: { code: resp.error.code?.toString() || 'mcp_error', message: resp.error.message || 'Unknown error' } }
     }
@@ -76,22 +126,6 @@ export class McpConnection implements GameConnection {
       return this.execute(command, args)
     }
 
-    // Poll notifications
-    try {
-      const notifResp = await this.callTool('get_notifications', {})
-      const notifResult = this.parseToolResult(notifResp.result)
-      if (notifResult?.notifications && Array.isArray(notifResult.notifications)) {
-        for (const n of notifResult.notifications) {
-          for (const handler of this.notificationHandlers) {
-            handler(n)
-          }
-        }
-        return { result, notifications: notifResult.notifications }
-      }
-    } catch {
-      // Notification polling is best-effort
-    }
-
     return { result }
   }
 
@@ -100,6 +134,10 @@ export class McpConnection implements GameConnection {
   }
 
   async disconnect(): Promise<void> {
+    if (this.notificationTimer) {
+      clearInterval(this.notificationTimer)
+      this.notificationTimer = null
+    }
     this.sessionId = null
     this.connected = false
   }
@@ -189,4 +227,8 @@ export class McpConnection implements GameConnection {
     }
     return r
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
