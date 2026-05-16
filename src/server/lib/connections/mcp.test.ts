@@ -69,11 +69,15 @@ describe('McpV2Connection rate-limit handling', () => {
   afterEach(() => mock?.restore())
 
   it('retries after JSON-RPC -32029 using seconds parsed from message', async () => {
+    // connect() fires three fetches: initialize, notifications/initialized
+    // (fire-and-forget, body ignored), and tools/list. Then execute() fires
+    // the rate-limited call and its retry.
     mock = installFetchMock([
       initOk,
+      initOk,
       toolsListReply,
-      { body: { jsonrpc: '2.0', id: 3, error: { code: -32029, message: 'Rate limited. Try again in 0 seconds.' } } },
-      { body: { jsonrpc: '2.0', id: 4, result: { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] } } },
+      { body: { jsonrpc: '2.0', id: 4, error: { code: -32029, message: 'Rate limited. Try again in 0 seconds.' } } },
+      { body: { jsonrpc: '2.0', id: 5, result: { content: [{ type: 'text', text: JSON.stringify({ ok: true }) }] } } },
     ])
 
     const conn = new McpV2Connection('http://server')
@@ -82,6 +86,8 @@ describe('McpV2Connection rate-limit handling', () => {
 
     expect(resp.error).toBeUndefined()
     expect(resp.result).toEqual({ ok: true })
+    // 3 fetches during connect + rate-limited call + retry — exactly 5
+    expect(mock.calls.length).toBe(5)
     await conn.disconnect()
   })
 })
