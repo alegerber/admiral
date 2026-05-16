@@ -20,6 +20,8 @@ export class McpV2Connection implements GameConnection {
   private notificationHandlers: NotificationHandler[] = []
   private connected = false
   private notificationTimer: ReturnType<typeof setInterval> | null = null
+  // SpaceMolt actions cool down on multi-second ticks, so a 3s notification
+  // latency is imperceptible while halving request volume vs. per-command polling.
   private notificationPollIntervalMs = 3000
   private polling = false
   private jsonRpcId = 0
