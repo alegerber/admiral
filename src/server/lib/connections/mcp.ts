@@ -8,6 +8,8 @@ export class McpConnection implements GameConnection {
   private notificationHandlers: NotificationHandler[] = []
   private connected = false
   private jsonRpcId = 0
+  private notificationTimer: ReturnType<typeof setInterval> | null = null
+  private notificationPollIntervalMs = 3000
 
   constructor(serverUrl: string) {
     this.baseUrl = serverUrl.replace(/\/$/, '') + '/mcp'
@@ -28,6 +30,33 @@ export class McpConnection implements GameConnection {
     // Send initialized notification
     await this.sendNotification('notifications/initialized', {})
     this.connected = true
+    this.startNotificationPolling()
+  }
+
+  private startNotificationPolling(): void {
+    if (this.notificationTimer) return
+    this.notificationTimer = setInterval(() => {
+      void this.pollNotifications()
+    }, this.notificationPollIntervalMs)
+  }
+
+  private async pollNotifications(): Promise<void> {
+    if (!this.connected || this.notificationHandlers.length === 0) return
+    try {
+      const resp = await this.callTool('get_notifications', {})
+      // Silently skip if rate-limited — the next interval will retry.
+      if (resp.error) return
+      const parsed = this.parseToolResult(resp.result)
+      const notifications = parsed?.notifications
+      if (!Array.isArray(notifications)) return
+      for (const n of notifications) {
+        for (const handler of this.notificationHandlers) {
+          handler(n)
+        }
+      }
+    } catch {
+      // Best-effort
+    }
   }
 
   async login(username: string, password: string): Promise<LoginResult> {
@@ -95,6 +124,10 @@ export class McpConnection implements GameConnection {
   }
 
   async disconnect(): Promise<void> {
+    if (this.notificationTimer) {
+      clearInterval(this.notificationTimer)
+      this.notificationTimer = null
+    }
     this.sessionId = null
     this.connected = false
   }
