@@ -110,6 +110,10 @@ export class McpConnection implements GameConnection {
       const match = /(\d+)\s*seconds?/i.exec(resp.error.message || '')
       const secs = match ? parseInt(match[1], 10) : 30
       await sleep(secs * 1000)
+      // disconnect() may have fired during the wait — bail instead of racing teardown.
+      if (!this.connected) {
+        return { error: { code: 'disconnected', message: 'Connection closed during rate-limit wait' } }
+      }
       return this.execute(command, args)
     }
 
