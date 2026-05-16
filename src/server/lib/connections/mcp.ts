@@ -10,6 +10,7 @@ export class McpConnection implements GameConnection {
   private jsonRpcId = 0
   private notificationTimer: ReturnType<typeof setInterval> | null = null
   private notificationPollIntervalMs = 3000
+  private polling = false
 
   constructor(serverUrl: string) {
     this.baseUrl = serverUrl.replace(/\/$/, '') + '/mcp'
@@ -41,9 +42,16 @@ export class McpConnection implements GameConnection {
   }
 
   private async pollNotifications(): Promise<void> {
-    if (!this.connected || this.notificationHandlers.length === 0) return
+    // Skip the round-trip when nobody is listening, or when a previous poll
+    // is still in flight (laptop sleep + setInterval can queue several ticks
+    // — without this guard a resume would burst-fire requests, exactly the
+    // rate-limit pattern this connection is trying to avoid).
+    if (this.polling || !this.connected || this.notificationHandlers.length === 0) return
+    this.polling = true
     try {
       const resp = await this.callTool('get_notifications', {})
+      // Re-check after the await: disconnect() may have fired while we waited.
+      if (!this.connected) return
       // Silently skip if rate-limited — the next interval will retry.
       if (resp.error) return
       const parsed = this.parseToolResult(resp.result)
@@ -56,6 +64,8 @@ export class McpConnection implements GameConnection {
       }
     } catch {
       // Best-effort
+    } finally {
+      this.polling = false
     }
   }
 
