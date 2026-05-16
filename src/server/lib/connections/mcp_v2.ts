@@ -1,6 +1,11 @@
 import type { GameConnection, LoginResult, RegisterResult, CommandResult, NotificationHandler } from './interface'
 import { USER_AGENT } from './interface'
 
+const MAX_RECONNECT_ATTEMPTS = 6
+const RECONNECT_BASE_DELAY_MS = 5_000
+const RATE_LIMIT_CODE = -32029
+const DEFAULT_BACKOFF_SECS = 30
+
 interface V2ToolDef {
   name: string
   description: string
@@ -20,6 +25,12 @@ export class McpV2Connection implements GameConnection {
   private notificationHandlers: NotificationHandler[] = []
   private connected = false
   private jsonRpcId = 0
+  private ensureConnectedPromise: Promise<void> | null = null
+  private notificationTimer: ReturnType<typeof setInterval> | null = null
+  // SpaceMolt actions cool down on multi-second ticks, so a 3s notification
+  // latency is imperceptible while halving request volume vs. per-command polling.
+  private notificationPollIntervalMs = 3000
+  private polling = false
   /** Map from action name to v2 tool name */
   private actionToTool: Map<string, string> = new Map()
   /** Discovered v2 tool definitions */
@@ -30,57 +41,7 @@ export class McpV2Connection implements GameConnection {
   }
 
   async connect(): Promise<void> {
-    const resp = await this.sendJsonRpc('initialize', {
-      protocolVersion: '2025-03-26',
-      capabilities: {},
-      clientInfo: { name: 'admiral', version: '0.2.1' },
-    })
-
-    if (!resp.result) {
-      throw new Error('MCP v2 initialize failed: ' + JSON.stringify(resp.error))
-    }
-
-    await this.sendNotification('notifications/initialized', {})
-
-    // Discover available tools and build action->tool mapping
-    await this.discoverTools()
-
-    this.connected = true
-  }
-
-  private async discoverTools(): Promise<void> {
-    const resp = await this.sendJsonRpc('tools/list', {})
-    if (!resp.result) return
-
-    const result = resp.result as { tools?: unknown[] }
-    if (!Array.isArray(result.tools)) return
-
-    for (const tool of result.tools) {
-      const t = tool as Record<string, unknown>
-      const name = t.name as string
-      if (!name) continue
-
-      const description = (t.description as string) || ''
-      const schema = t.inputSchema as Record<string, unknown> | undefined
-      const props = schema?.properties as Record<string, Record<string, unknown>> | undefined
-      const hasActionParam = !!props?.action
-
-      // Extract actions from enum if available, otherwise parse from description
-      const actionEnum = props?.action?.enum as string[] | undefined
-      const actions = actionEnum || (hasActionParam ? parseActionsFromDescription(description) : [])
-
-      this.v2Tools.push({ name, description, actions })
-
-      // Build reverse map: action name -> tool name
-      for (const action of actions) {
-        this.actionToTool.set(action, name)
-      }
-
-      // For tools without action param (like catalog), map tool name itself
-      if (!hasActionParam) {
-        this.actionToTool.set(name, name)
-      }
-    }
+    await this.ensureConnected()
   }
 
   async login(username: string, password: string): Promise<LoginResult> {
@@ -115,6 +76,12 @@ export class McpV2Connection implements GameConnection {
   }
 
   async execute(command: string, args?: Record<string, unknown>): Promise<CommandResult> {
+    try {
+      await this.ensureConnected()
+    } catch {
+      return { error: { code: 'connection_failed', message: 'Could not connect to MCP server' } }
+    }
+
     let toolName = this.actionToTool.get(command)
     let toolArgs: Record<string, unknown>
 
@@ -149,27 +116,8 @@ export class McpV2Connection implements GameConnection {
     if (errCode === 'session_expired' || errCode === 'session_invalid') {
       this.sessionId = null
       this.connected = false
-      await this.connect()
+      await this.ensureConnected()
       return this.execute(command, args)
-    }
-
-    // Poll notifications
-    const notifTool = this.actionToTool.get('get_notifications')
-    if (notifTool) {
-      try {
-        const notifResp = await this.callTool(notifTool, { action: 'get_notifications' })
-        const { parsed: notifResult } = this.parseToolResult(notifResp.result)
-        if (notifResult?.notifications && Array.isArray(notifResult.notifications)) {
-          for (const n of notifResult.notifications) {
-            for (const handler of this.notificationHandlers) {
-              handler(n)
-            }
-          }
-          return { result, structuredContent, notifications: notifResult.notifications }
-        }
-      } catch {
-        // Notification polling is best-effort
-      }
     }
 
     return { result, structuredContent }
@@ -210,12 +158,115 @@ export class McpV2Connection implements GameConnection {
   }
 
   async disconnect(): Promise<void> {
+    if (this.notificationTimer) {
+      clearInterval(this.notificationTimer)
+      this.notificationTimer = null
+    }
     this.sessionId = null
     this.connected = false
   }
 
   isConnected(): boolean {
     return this.connected
+  }
+
+  private async ensureConnected(): Promise<void> {
+    if (this.connected) return
+    if (!this.ensureConnectedPromise) {
+      this.ensureConnectedPromise = this.doConnect().finally(() => {
+        this.ensureConnectedPromise = null
+      })
+    }
+    return this.ensureConnectedPromise
+  }
+
+  private async doConnect(): Promise<void> {
+    let lastError: Error | null = null
+    for (let attempt = 0; attempt < MAX_RECONNECT_ATTEMPTS; attempt++) {
+      try {
+        const resp = await this.sendJsonRpc('initialize', {
+          protocolVersion: '2025-03-26',
+          capabilities: {},
+          clientInfo: { name: 'admiral', version: '0.2.1' },
+        })
+        if (!resp.result) {
+          throw new Error('MCP v2 initialize failed: ' + JSON.stringify(resp.error))
+        }
+        await this.sendNotification('notifications/initialized', {})
+        await this.discoverTools()
+        this.connected = true
+        this.startNotificationPolling()
+        return
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err))
+        const delay = RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt)
+        await sleep(delay)
+      }
+    }
+    throw lastError || new Error('Failed to connect to MCP v2 server')
+  }
+
+  private async discoverTools(): Promise<void> {
+    const resp = await this.sendJsonRpc('tools/list', {})
+    if (!resp.result) return
+
+    const result = resp.result as { tools?: unknown[] }
+    if (!Array.isArray(result.tools)) return
+
+    for (const tool of result.tools) {
+      const t = tool as Record<string, unknown>
+      const name = t.name as string
+      if (!name) continue
+
+      const description = (t.description as string) || ''
+      const schema = t.inputSchema as Record<string, unknown> | undefined
+      const props = schema?.properties as Record<string, Record<string, unknown>> | undefined
+      const hasActionParam = !!props?.action
+
+      const actionEnum = props?.action?.enum as string[] | undefined
+      const actions = actionEnum || (hasActionParam ? parseActionsFromDescription(description) : [])
+
+      this.v2Tools.push({ name, description, actions })
+
+      for (const action of actions) {
+        this.actionToTool.set(action, name)
+      }
+
+      if (!hasActionParam) {
+        this.actionToTool.set(name, name)
+      }
+    }
+  }
+
+  private startNotificationPolling(): void {
+    if (this.notificationTimer) return
+    this.notificationTimer = setInterval(() => {
+      void this.pollNotifications()
+    }, this.notificationPollIntervalMs)
+  }
+
+  private async pollNotifications(): Promise<void> {
+    if (this.polling || !this.connected || this.notificationHandlers.length === 0) return
+    const notifTool = this.actionToTool.get('get_notifications')
+    if (!notifTool) return
+    this.polling = true
+    try {
+      const resp = await this.callTool(notifTool, { action: 'get_notifications' })
+      if (!this.connected) return
+      if (resp.error) return
+      const { parsed } = this.parseToolResult(resp.result)
+      const notifications = parsed?.notifications
+      if (!Array.isArray(notifications)) return
+      for (const n of notifications) {
+        for (const handler of this.notificationHandlers) {
+          handler(n)
+        }
+      }
+    } catch {
+      // Best-effort
+    } finally {
+      this.polling = false
+    }
   }
 
   private async callTool(name: string, args: Record<string, unknown>): Promise<{
@@ -226,6 +277,22 @@ export class McpV2Connection implements GameConnection {
   }
 
   private async sendJsonRpc(method: string, params: unknown): Promise<{
+    result?: unknown
+    error?: { code?: number; message: string }
+  }> {
+    while (true) {
+      const resp = await this.doSendJsonRpc(method, params)
+      if (resp.error && resp.error.code === RATE_LIMIT_CODE) {
+        const match = /(\d+)\s*seconds?/i.exec(resp.error.message || '')
+        const secs = match ? parseInt(match[1], 10) : DEFAULT_BACKOFF_SECS
+        await sleep(secs * 1000)
+        continue
+      }
+      return resp
+    }
+  }
+
+  private async doSendJsonRpc(method: string, params: unknown): Promise<{
     result?: unknown
     error?: { code?: number; message: string }
   }> {
@@ -312,8 +379,7 @@ function parseActionsFromDescription(description: string): string[] {
   const actions: string[] = []
   const lines = description.split('\n')
   for (const line of lines) {
-    // Match lines like "  action_name(" or "  action_name --"
-    const m = line.match(/^\s{2}(\w+)(?:\(| \u2014)/)
+    const m = line.match(/^\s{2}(\w+)(?:\(| —)/)
     if (m) actions.push(m[1])
   }
   return actions
@@ -322,4 +388,8 @@ function parseActionsFromDescription(description: string): string[] {
 function isQueryAction(action: string): boolean {
   return /^(get_|view_|list_|search_|find_|browse_|read_|query_|estimate_|analyze_|forum_list|forum_get|captains_log_list|captains_log_get)/.test(action)
     || action === 'help'
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
